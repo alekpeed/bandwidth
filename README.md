@@ -32,7 +32,7 @@ history of readings, with the failures included, proves something.
 
 Requires Ubuntu 24.04 LTS or later, on x86-64.
 
-**Download `bandwidth-logger_1.0.0-1_all.deb` and double-click it.** Your
+**Download `bandwidth-logger_1.1.0-1_all.deb` and double-click it.** Your
 software installer opens, you press Install, and that is the whole procedure.
 
 Then launch **Bandwidth Logger** from the application menu — press the Super
@@ -45,7 +45,7 @@ Nothing after this point needs a terminal.
 
 ```bash
 cd ~/Downloads
-sudo apt install ./bandwidth-logger_1.0.0-1_all.deb
+sudo apt install ./bandwidth-logger_1.1.0-1_all.deb
 ```
 
 The leading `./` is required; without it `apt` looks for a package of that
@@ -56,7 +56,7 @@ If `apt` reports `Unsupported file ... given on commandline`, it has not
 recognised the file as a Debian archive. Check the download with:
 
 ```bash
-file ~/Downloads/bandwidth-logger_1.0.0-1_all.deb
+file ~/Downloads/bandwidth-logger_1.1.0-1_all.deb
 ```
 
 A good copy reports `Debian binary package (format 2.0)`. Anything else means
@@ -65,30 +65,45 @@ just double-click it in Files, which is the supported route.
 
 </details>
 
-### About the speed-test engine
+### Installing the speed-test engine — required
 
-Bandwidth Logger does not measure your connection itself; it drives a
-separate speed-test program and records what that program reports. Two are
-supported:
+Bandwidth Logger does not measure your connection itself. It drives the
+**official Ookla Speedtest CLI** — the same engine speedtest.net uses — and
+records what it reports. Ookla's licence does not permit anyone else to
+redistribute it, so it is not included in this package and you have to
+install it once.
 
-| Engine | Licence | How it arrives |
-|---|---|---|
-| **Ookla Speedtest CLI** | Proprietary (Ookla EULA) | Preferred when installed. Not included — see below. |
-| **speedtest-cli** | Apache-2.0 | Installed automatically as a dependency. |
+The application's **Set up speed-test engine** screen shows these commands.
+Until it is installed, every attempt is recorded as a failure rather than
+measured with something less accurate.
 
-`speedtest-cli` is a package dependency, so **the application works as soon
-as you install it**, with nothing else to do.
+```bash
+sudo apt-get remove -y speedtest-cli
+curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh \
+  | sudo env os=ubuntu dist=jammy bash
+sudo apt-get install -y speedtest
+```
 
-The Ookla CLI measures more — jitter, packet loss and per-direction latency,
-which `speedtest-cli` cannot report at all — so it is used automatically when
-present. Its licence does not permit redistribution by anyone else, so it is
-not bundled here and is not a dependency. If you want it, the application's
-**Set up speed-test engine** screen shows you the two commands that add
-Ookla's own software source and install it. That is Ookla's software, not
-part of this application.
+Two details in there are not obvious, and both were found by the plain
+commands failing:
 
-Whichever engine measured a given result is recorded on that result, so you
-are never unknowingly comparing numbers from two different tools.
+* **`dist=jammy` is required on Ubuntu 24.04.** Ookla publishes no repository
+  for 24.04 ("noble") — that path returns 404 — so the unmodified upstream
+  script reports your system as unsupported. The jammy build runs correctly
+  on 24.04.
+* **`speedtest-cli` must be removed first.** Ubuntu's package for it owns
+  `/usr/bin/speedtest`, the very path Ookla's package installs to, so `dpkg`
+  refuses to unpack Ookla's engine while it is present.
+
+Verify with `speedtest --version`; it should say *Speedtest by Ookla*.
+
+> **Removed in 1.1.0.** Version 1.0.0 shipped `speedtest-cli` as a fallback so
+> the application worked immediately. It was removed because it under-reports
+> throughput badly on fast connections — roughly half the real figure on a
+> gigabit line, since it cannot open enough parallel connections to fill one.
+> For an application whose purpose is diagnosing a slow connection, a number
+> that is quietly wrong by half is worse than no number at all. Results already
+> recorded by it are kept, and the record details now say so.
 
 ---
 
@@ -218,8 +233,20 @@ See [`docs/TESTING.md`](docs/TESTING.md) for what is covered.
 
 ## Upgrading
 
+Double-click the newer `.deb`, or:
+
 ```bash
 sudo apt install ./bandwidth-logger_<newer-version>_all.deb
+```
+
+**Upgrading from 1.0.0 with Ookla's engine already installed** is the one case
+that needs care. `apt` will refuse with `bandwidth-logger : Depends:
+speedtest-cli but it is not installed`, because installing Ookla's engine
+removed the package 1.0.0 depended on. Recover with:
+
+```bash
+sudo dpkg -i bandwidth-logger_1.1.0-1_all.deb
+sudo apt-get -f install
 ```
 
 Your records and settings are kept. Schema changes are applied automatically

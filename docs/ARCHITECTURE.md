@@ -35,8 +35,8 @@ background timer can run a test in a process that has no display at all.
 | `core/scheduler.py` | Creates, updates and inspects the systemd user timer. |
 | `core/result_parser.py` | Engine output → normalised measurement. |
 | `engines/base.py` | The engine interface and error normalisation. |
-| `engines/ookla.py`, `engines/speedtest_cli.py` | The two adapters. |
-| `engines/registry.py` | Which engine to use. |
+| `engines/ookla.py` | The Ookla Speedtest CLI adapter. |
+| `engines/registry.py` | Which engine to use, and reporting when none is installed. |
 | `storage/database.py` | Connection, settings, queries, transactional writes. |
 | `storage/migrations.py` | Versioned, transactional, non-destructive schema changes. |
 | `storage/export_csv.py` | CSV export. |
@@ -187,8 +187,12 @@ zero, and it refuses to treat JSON booleans as numbers. `bps_to_mbps(None)`
 is `None`, not `0.0`. CSV writes a blank cell for `None` and `0` for zero.
 The details window says "Not measured" rather than showing an empty space.
 
-`speedtest-cli` cannot measure jitter, packet loss or per-direction latency;
-those columns stay NULL for its results rather than being filled with zeros.
+A fallback engine shipped in 1.0.0 and was removed in 1.1.0 after it was
+found to report roughly half the real speed on a gigabit line. The adapter
+layer meant the removal touched only `registry.py`, one adapter module and
+one parser — nothing in the database, the scheduler or the interface. That is
+what the layer is for. Records it produced are kept and annotated rather than
+rewritten.
 
 ---
 

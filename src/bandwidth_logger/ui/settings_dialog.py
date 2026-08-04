@@ -130,8 +130,8 @@ class SettingsDialog(Gtk.Window):
             _labelled_row(
                 "_Engine to use",
                 self.engine_dropdown,
-                "Choosing automatically prefers the Ookla Speedtest CLI and falls back "
-                "to speedtest-cli. Every result records which engine measured it.",
+                "The Ookla Speedtest CLI is the only supported engine \u2014 the same one "
+                "speedtest.net uses. Every result records which engine measured it.",
             )
         )
 

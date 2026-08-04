@@ -17,7 +17,6 @@ from bandwidth_logger.core.result_parser import (
     coerce_float,
     coerce_int,
     parse_ookla_json,
-    parse_speedtest_cli_json,
 )
 from support.fake_engine import SPARSE_RESULT, SUCCESS_RESULT, ZERO_RESULT
 
@@ -69,31 +68,6 @@ class TestOptionalFieldsMissing:
         assert measurement.server_id is None
         assert measurement.isp_name is None
         assert measurement.external_ip is None
-
-    def test_speedtest_cli_leaves_unmeasured_fields_null(self):
-        payload = {
-            "download": 95_000_000.0,
-            "upload": 19_000_000.0,
-            "ping": 10.5,
-            "server": {
-                "id": "12345",
-                "host": "speedtest.example.net:8080",
-                "sponsor": "Example Telecom",
-                "name": "Manchester",
-                "country": "United Kingdom",
-            },
-            "client": {"ip": "203.0.113.42", "isp": "Example Internet"},
-        }
-        measurement = parse_speedtest_cli_json(json.dumps(payload))
-
-        # speedtest-cli already reports bits per second, so no conversion.
-        assert measurement.download_bps == 95_000_000
-        assert measurement.upload_bps == 19_000_000
-        assert measurement.idle_latency_ms == 10.5
-        # This engine cannot measure these at all.
-        assert measurement.jitter_ms is None
-        assert measurement.packet_loss_percent is None
-        assert measurement.download_latency_ms is None
 
 
 class TestZeroIsNotMissing:

@@ -27,9 +27,21 @@ from .base import EngineError, InstallGuidance, SpeedTestEngine
 
 _VERSION_PATTERN = re.compile(r"(\d+\.\d+(?:\.\d+)*)")
 
+#: Verified working on Ubuntu 24.04. Two details are load-bearing and were
+#: both found by the commands failing in real use:
+#:
+#: * ``dist=jammy`` is forced. Ookla publishes no repository for Ubuntu 24.04
+#:   ("noble") -- that path returns 404 -- so the unmodified upstream script
+#:   reports the distribution as unsupported. The jammy build runs correctly
+#:   on 24.04.
+#: * ``speedtest-cli`` is removed first. Ubuntu's package for it owns
+#:   ``/usr/bin/speedtest``, the same path Ookla's package installs to, so
+#:   dpkg refuses to unpack while it is present.
 INSTALL_COMMANDS: tuple[str, ...] = (
-    "curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash",
-    "sudo apt-get install speedtest",
+    "sudo apt-get remove -y speedtest-cli",
+    "curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh"
+    " | sudo env os=ubuntu dist=jammy bash",
+    "sudo apt-get install -y speedtest",
 )
 
 
@@ -108,15 +120,20 @@ class OoklaEngine(SpeedTestEngine):
             summary="Ookla Speedtest CLI is not installed",
             detail=(
                 "Bandwidth Logger measures your connection with the official Ookla "
-                "Speedtest CLI. That program is made and licensed by Ookla, not by "
-                "this application, and its licence does not allow it to be included "
-                "in this package, so it has to be installed separately.\n\n"
-                "Running the two commands below adds Ookla's own software source and "
-                "installs the engine. They need an administrator password because "
-                "they install system software; Bandwidth Logger itself never needs "
-                "administrator rights.\n\n"
-                "If you would rather not install Ookla's software, Bandwidth Logger "
-                "can use the open-source speedtest-cli engine instead."
+                "Speedtest CLI \u2014 the same engine speedtest.net uses. That program is "
+                "made and licensed by Ookla, not by this application, and its licence "
+                "does not allow it to be included in this package, so it has to be "
+                "installed separately.\n\n"
+                "Run the three commands below in a terminal, in order. They need an "
+                "administrator password because they install system software; "
+                "Bandwidth Logger itself never needs administrator rights.\n\n"
+                "The first command removes speedtest-cli if you have it. That package "
+                "claims the same /usr/bin/speedtest filename, so Ookla's engine cannot "
+                "install while it is present. The second forces the jammy repository "
+                "because Ookla publishes no packages for Ubuntu 24.04 yet; the jammy "
+                "build runs correctly on 24.04.\n\n"
+                "Until this is installed, Bandwidth Logger records each attempt as a "
+                "failure rather than measuring with something less accurate."
             ),
             commands=INSTALL_COMMANDS,
             url="https://www.speedtest.net/apps/cli",

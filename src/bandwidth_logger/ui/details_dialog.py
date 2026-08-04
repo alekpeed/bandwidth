@@ -21,6 +21,7 @@ from ..core.models import (  # noqa: E402
     TestRun,
     format_duration,
     format_ms,
+    engine_caveat,
     summarise_error,
 )
 
@@ -71,6 +72,12 @@ class DetailsDialog(Gtk.Window):
 
         for title, rows in self._sections():
             content.append(self._build_section(title, rows))
+
+        # A number measured by a retired engine carries its caveat next to
+        # itself, so an old low reading cannot be misread as a real slowdown.
+        caveat = engine_caveat(run.engine_name) if run.succeeded else None
+        if caveat:
+            content.append(self._build_text_block("About this measurement", caveat))
 
         if run.error_message:
             content.append(self._build_text_block("Full error message", run.error_message))

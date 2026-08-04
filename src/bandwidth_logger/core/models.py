@@ -73,6 +73,26 @@ ERROR_SUMMARIES: dict[str, str] = {
 }
 
 
+#: Notes attached to results from engines no longer used. Records are never
+#: rewritten or deleted, so a measurement taken by a retired engine keeps its
+#: number and gains the context needed to read it correctly.
+ENGINE_CAVEATS: dict[str, str] = {
+    "speedtest-cli": (
+        "This result was measured by speedtest-cli, the fallback engine included in "
+        "version 1.0.0 and removed in 1.1.0. On connections faster than about "
+        "300 Mbps that engine reported well below the real speed \u2014 sometimes only "
+        "half of it \u2014 because it could not open enough connections at once to fill "
+        "a fast line. If this figure looks too low, that is why. Results measured by "
+        "the Ookla engine are not affected."
+    ),
+}
+
+
+def engine_caveat(engine_name: str | None) -> str | None:
+    """Context needed to read a result from a retired engine, if any."""
+    return ENGINE_CAVEATS.get(engine_name or "")
+
+
 def summarise_error(category: str | None) -> str:
     """One short sentence suitable for the status area."""
     if not category:

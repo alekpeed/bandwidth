@@ -67,28 +67,33 @@ def run_cli(
 
 @pytest.fixture()
 def stub_engine_on_path(tmp_path):
-    """Put a ``speedtest-cli`` on PATH that prints a recorded result.
+    """Put an Ookla-shaped ``speedtest`` on PATH that prints a recorded result.
 
-    Lets the CLI's own engine selection run for real -- including
-    ``shutil.which`` and the version probe -- without any network traffic.
+    Lets the CLI's own engine selection run for real -- ``shutil.which``, the
+    version probe, and the check that the binary really is Ookla's -- without
+    any network traffic. The version banner has to say "Ookla" or the adapter
+    correctly refuses to use it.
     """
     directory = tmp_path / "bin"
     directory.mkdir()
-    script = directory / "speedtest-cli"
+    script = directory / "speedtest"
     script.write_text(
         "#!/usr/bin/env python3\n"
         "import json, sys\n"
         "if '--version' in sys.argv:\n"
-        "    print('speedtest-cli 2.1.3')\n"
+        "    print('Speedtest by Ookla 1.2.0.84 (ea6b6773cf) Linux/x86_64-linux-musl')\n"
         "    sys.exit(0)\n"
         "print(json.dumps({\n"
-        "    'download': 95000000.0,\n"
-        "    'upload': 19000000.0,\n"
-        "    'ping': 10.5,\n"
-        "    'server': {'id': '12345', 'sponsor': 'Example Telecom',\n"
-        "               'name': 'Manchester', 'country': 'United Kingdom',\n"
-        "               'host': 'speedtest.example.net:8080'},\n"
-        "    'client': {'ip': '203.0.113.42', 'isp': 'Example Internet'},\n"
+        "    'type': 'result',\n"
+        "    'ping': {'latency': 10.5, 'jitter': 1.2},\n"
+        "    'download': {'bandwidth': 11875000},\n"
+        "    'upload': {'bandwidth': 2375000},\n"
+        "    'packetLoss': 0,\n"
+        "    'isp': 'Example Internet',\n"
+        "    'interface': {'name': 'enp3s0', 'externalIp': '203.0.113.42'},\n"
+        "    'server': {'id': 12345, 'name': 'Example Telecom',\n"
+        "               'location': 'Manchester', 'country': 'United Kingdom',\n"
+        "               'host': 'speedtest.example.net'},\n"
         "}))\n",
         encoding="utf-8",
     )
@@ -111,7 +116,7 @@ class TestScheduledRun:
             assert runs[0].trigger_type == TriggerType.SCHEDULED
             assert runs[0].status == RunStatus.SUCCESS
             assert runs[0].download_bps == 95_000_000
-            assert runs[0].engine_name == "speedtest-cli"
+            assert runs[0].engine_name == "ookla"
             # A scheduled run records when it was due, as well as when it ran.
             assert runs[0].scheduled_at_utc is not None
         finally:
@@ -172,7 +177,7 @@ class TestStatusCommand:
         payload = json.loads(result.stdout)
         assert payload["record_count"] == 1
         assert payload["schema_version"] >= 1
-        assert payload["engines"]["selected"] == "speedtest-cli"
+        assert payload["engines"]["selected"] == "ookla"
         assert payload["latest_run"]["status"] == "success"
 
     def test_status_works_on_an_empty_database(self, isolated_home):

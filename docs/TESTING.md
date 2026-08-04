@@ -87,7 +87,11 @@ and integration tests.
 * **Migrations cannot become destructive** — the migrations module is read
   as source and the build fails if destructive SQL appears in it.
 * **A failed save is surfaced** rather than swallowed.
-* **An explicit engine choice is never silently substituted.**
+* **No engine is ever silently substituted.** With none installed, the run
+  is recorded as `engine_missing` rather than measured some other way.
+* **The Ookla install commands are asserted to carry both Ubuntu 24.04
+  workarounds** — the jammy repository and removing the conflicting package
+  first — because the plain upstream commands fail on the target platform.
 * **Ookla identity is verified** — a `speedtest` that is really
   `speedtest-cli` is rejected rather than driven with the wrong arguments.
 * **Every error category has short, plain wording** for the status area.
@@ -116,7 +120,7 @@ lets it run on a headless machine.
 Run on Ubuntu 24.04.4 with Python 3.12.3, GTK 4.14.5, under Xvfb:
 
 ```
-194 passed
+192 passed
 ```
 
 Both `python3.11` and `python3.12` were used; the packaged application runs

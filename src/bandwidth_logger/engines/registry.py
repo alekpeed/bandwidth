@@ -1,21 +1,31 @@
 """Engine discovery and selection.
 
-Selection order, and why: the Ookla CLI is preferred because it is the
-measurement most users mean by "speed test" and it reports jitter, packet
-loss and per-direction latency. It cannot be shipped in the package, so when
-it is absent the open-source ``speedtest-cli`` is used instead and the
-application still works out of the box. Whichever ran is recorded on every
-row, so results are never silently comparing two different measurements.
+The Ookla Speedtest CLI is the only supported engine.
+
+An open-source fallback (``speedtest-cli``) shipped in 1.0.0 and was removed
+in 1.1.0, for two reasons found in use:
+
+* It under-reported badly on fast connections -- roughly half the real figure
+  on a gigabit line, because it cannot open enough parallel connections to
+  fill one. For an application whose purpose is diagnosing a slow connection,
+  a number that is quietly wrong by half is worse than no number at all.
+* Ubuntu's ``speedtest-cli`` package owns ``/usr/bin/speedtest``, the same
+  path Ookla's package installs to, so having it present made the better
+  engine impossible to install.
+
+Every row still records ``engine_name``, so history measured by the old
+fallback stays identifiable and is annotated as such in the record details.
 """
 
 from __future__ import annotations
 
 from .base import SpeedTestEngine
 from .ookla import OoklaEngine
-from .speedtest_cli import SpeedtestCliEngine
 
-#: Every engine the application knows how to drive, best first.
-ENGINE_CLASSES: tuple[type[SpeedTestEngine], ...] = (OoklaEngine, SpeedtestCliEngine)
+#: Every engine the application knows how to drive, best first. The adapter
+#: layer remains so another provider can be added without touching the
+#: database, the scheduler or the interface.
+ENGINE_CLASSES: tuple[type[SpeedTestEngine], ...] = (OoklaEngine,)
 
 AUTOMATIC = "auto"
 
@@ -46,7 +56,8 @@ def select_engine(preference: str = AUTOMATIC) -> SpeedTestEngine | None:
     With ``preference`` set to a specific engine name that engine is used if
     installed, and no substitution happens behind the user's back -- a
     deliberate choice is honoured or it fails visibly. With ``auto`` the best
-    installed engine is used. ``None`` means nothing is installed.
+    installed engine is used. ``None`` means nothing is installed, which the
+    interface reports rather than quietly measuring with something else.
     """
     if preference and preference != AUTOMATIC:
         chosen = engine_by_name(preference)

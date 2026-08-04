@@ -16,7 +16,6 @@ from bandwidth_logger.engines.registry import (
     known_engines,
     select_engine,
 )
-from bandwidth_logger.engines.speedtest_cli import SpeedtestCliEngine
 
 
 class TestErrorClassification:
@@ -66,49 +65,43 @@ class TestErrorSummaries:
 
 
 class TestRegistry:
-    def test_ookla_is_preferred_over_the_fallback(self):
-        engines = known_engines()
-        names = [engine.name for engine in engines]
-        assert names.index("ookla") < names.index("speedtest-cli")
+    def test_ookla_is_the_only_supported_engine(self):
+        """The speedtest-cli fallback was removed in 1.1.0.
+
+        It under-reported throughput on fast connections, and its Ubuntu
+        package claims the same /usr/bin/speedtest path Ookla installs to,
+        so its presence blocked the accurate engine entirely.
+        """
+        assert [engine.name for engine in known_engines()] == ["ookla"]
 
     def test_lookup_by_name(self):
         assert isinstance(engine_by_name("ookla"), OoklaEngine)
-        assert isinstance(engine_by_name("speedtest-cli"), SpeedtestCliEngine)
+        assert engine_by_name("speedtest-cli") is None
         assert engine_by_name("nonexistent") is None
 
-    def test_automatic_selection_picks_the_best_installed_engine(self, monkeypatch):
+    def test_automatic_selection_picks_ookla_when_installed(self, monkeypatch):
         monkeypatch.setattr(OoklaEngine, "is_available", lambda self: True)
-        monkeypatch.setattr(SpeedtestCliEngine, "is_available", lambda self: True)
 
         assert select_engine(AUTOMATIC).name == "ookla"
 
-    def test_automatic_selection_falls_back_when_ookla_is_absent(self, monkeypatch):
-        monkeypatch.setattr(OoklaEngine, "is_available", lambda self: False)
-        monkeypatch.setattr(SpeedtestCliEngine, "is_available", lambda self: True)
-
-        assert select_engine(AUTOMATIC).name == "speedtest-cli"
-
     def test_no_engine_installed_selects_nothing(self, monkeypatch):
+        """Nothing is substituted. The interface reports that no engine is
+        available rather than measuring with something less accurate.
+        """
         monkeypatch.setattr(OoklaEngine, "is_available", lambda self: False)
-        monkeypatch.setattr(SpeedtestCliEngine, "is_available", lambda self: False)
 
         assert select_engine(AUTOMATIC) is None
         assert available_engines() == []
 
-    def test_a_deliberate_choice_is_not_silently_substituted(self, monkeypatch):
-        """Asking for Ookla and getting speedtest-cli would quietly change
-        what the numbers mean, so an explicit choice fails visibly instead.
-        """
-        monkeypatch.setattr(OoklaEngine, "is_available", lambda self: False)
-        monkeypatch.setattr(SpeedtestCliEngine, "is_available", lambda self: True)
-
-        assert select_engine("ookla") is None
-
     def test_an_explicit_choice_is_honoured_when_installed(self, monkeypatch):
         monkeypatch.setattr(OoklaEngine, "is_available", lambda self: True)
-        monkeypatch.setattr(SpeedtestCliEngine, "is_available", lambda self: True)
 
-        assert select_engine("speedtest-cli").name == "speedtest-cli"
+        assert select_engine("ookla").name == "ookla"
+
+    def test_an_explicit_choice_that_is_absent_fails_visibly(self, monkeypatch):
+        monkeypatch.setattr(OoklaEngine, "is_available", lambda self: False)
+
+        assert select_engine("ookla") is None
 
 
 class TestCommandConstruction:
@@ -123,13 +116,6 @@ class TestCommandConstruction:
         assert "--accept-license" in command
         assert "--accept-gdpr" in command
 
-    def test_speedtest_cli_requests_json(self, monkeypatch):
-        engine = SpeedtestCliEngine()
-        monkeypatch.setattr(engine, "executable_path", lambda: "/usr/bin/speedtest-cli")
-
-        command = engine.build_command()
-        assert "--json" in command
-
     def test_a_missing_binary_raises_the_engine_missing_category(self, monkeypatch):
         from bandwidth_logger.engines.base import EngineError
 
@@ -142,10 +128,7 @@ class TestCommandConstruction:
 
     def test_commands_are_argument_vectors_never_shell_strings(self, monkeypatch):
         """Nothing is ever handed to a shell, so nothing can be injected."""
-        for engine_class, path in (
-            (OoklaEngine, "/usr/bin/speedtest"),
-            (SpeedtestCliEngine, "/usr/bin/speedtest-cli"),
-        ):
+        for engine_class, path in ((OoklaEngine, "/usr/bin/speedtest"),):
             engine = engine_class()
             monkeypatch.setattr(engine, "executable_path", lambda path=path: path)
             command = engine.build_command()
@@ -164,6 +147,24 @@ class TestInstallGuidance:
         assert "licence does not allow" in guidance.detail
         assert guidance.commands
         assert guidance.url
+
+    def test_the_install_commands_work_on_ubuntu_24_04(self):
+        """Both details here were found by the commands failing in real use.
+
+        Ookla publishes no repository for Ubuntu 24.04 ("noble"), so the
+        upstream script must be pointed at the jammy one. And Ubuntu's
+        speedtest-cli package owns /usr/bin/speedtest, so dpkg refuses to
+        unpack Ookla's package while it is installed.
+        """
+        commands = OoklaEngine().install_guidance().commands
+        joined = "\n".join(commands)
+
+        assert "dist=jammy" in joined, "the unmodified script fails on 24.04"
+        assert "remove" in joined and "speedtest-cli" in joined, (
+            "the conflicting package must be removed first"
+        )
+        # Order matters: the removal has to precede the install.
+        assert commands.index("sudo apt-get remove -y speedtest-cli") == 0
 
     def test_every_engine_offers_guidance(self):
         for engine in known_engines():

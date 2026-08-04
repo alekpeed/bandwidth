@@ -1,3 +1,23 @@
+bandwidth-logger (1.1.0-1) noble; urgency=medium
+
+  * Remove the speedtest-cli fallback engine. It under-reported throughput
+    badly on fast connections -- roughly half the real figure on a gigabit
+    line -- because it cannot open enough parallel connections to fill one.
+    For an application whose purpose is diagnosing a slow connection, a
+    number that is quietly wrong by half is worse than no number at all.
+  * Conflict with speedtest-cli rather than depending on it. Ubuntu's package
+    owns /usr/bin/speedtest, the same path Ookla's package installs to, so
+    having it present made the Ookla engine impossible to install.
+  * Correct the Ookla install commands. Ookla publishes no repository for
+    Ubuntu 24.04, so the upstream script must be told to use the jammy
+    repository, which runs correctly on 24.04. The commands now also remove
+    the conflicting package first. Verified working end to end.
+  * Annotate stored results measured by the removed engine, so an old low
+    reading cannot be misread as a real slowdown. No record is rewritten or
+    deleted.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 13:00:00 +0000
+
 bandwidth-logger (1.0.0-1) noble; urgency=medium
 
   * First release.

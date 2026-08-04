@@ -1,5 +1,75 @@
 # Release notes
 
+## 1.1.0 — 4 August 2026
+
+A correctness release. One change, for one reason: **the fallback speed-test
+engine was reporting about half the real speed on a fast connection.**
+
+### Removed the speedtest-cli fallback
+
+Version 1.0.0 shipped `speedtest-cli` as a dependency so the application
+worked the moment it was installed. In use on a gigabit line it reported
+474 Mbps where speedtest.net reported 880. It opens far fewer parallel
+connections than Ookla's client and cannot saturate a fast link.
+
+For an application whose entire purpose is diagnosing a slow connection, that
+is the worst failure available: the wrong number is plausible, it is recorded
+permanently, and it reads as evidence against your provider. A number quietly
+wrong by half is worse than no number at all.
+
+The Ookla Speedtest CLI is now the only supported engine. When it is not
+installed, each attempt is recorded as an `engine_missing` failure — visible
+and explained — rather than measured with something less accurate.
+
+### Fixed the Ookla install instructions
+
+The commands shipped in 1.0.0 could not work on Ubuntu 24.04. Both problems
+were found by running them:
+
+* Ookla publishes **no repository for Ubuntu 24.04** ("noble") — that path
+  returns 404 — so the upstream script reported the system as unsupported.
+  The commands now force the jammy repository, which runs correctly on 24.04.
+* Ubuntu's `speedtest-cli` package **owns `/usr/bin/speedtest`**, exactly
+  where Ookla's package installs its binary, so `dpkg` refused to unpack it.
+  Because 1.0.0 declared `speedtest-cli` as a dependency, this application
+  was installing the one package that blocked its own preferred engine. The
+  package now declares `Conflicts: speedtest-cli`.
+
+The corrected sequence is verified end to end on Ubuntu 24.04.
+
+### Existing records are kept
+
+Nothing is deleted or rewritten. Results measured by the old engine keep
+their `engine_name`, and the record details now carry an explanation of why
+the figure may be low, so an old reading cannot be misread as a real
+slowdown.
+
+### Upgrading
+
+Install the new `.deb` over the old one, by double-clicking it.
+
+**If you already installed Ookla's engine while on 1.0.0**, `apt` will report
+`bandwidth-logger : Depends: speedtest-cli but it is not installed` and refuse
+to proceed. That is not a fault in the new package: installing Ookla's engine
+removes `speedtest-cli`, which the *old* version depended on, so the system is
+left in a broken state that `apt` will not resolve on its own. Recover with:
+
+```bash
+sudo dpkg -i bandwidth-logger_1.1.0-1_all.deb
+sudo apt-get -f install
+```
+
+Verified on Ubuntu 24.04: this upgrades cleanly, leaves the Ookla engine in
+place, and preserves every stored record.
+
+Once on 1.1.0 the situation cannot recur, because the package conflicts with
+`speedtest-cli` rather than depending on it.
+
+You then need the Ookla engine if you do not already have it — see the README,
+or the **Set up speed-test engine** screen.
+
+---
+
 ## 1.0.0 — 4 August 2026
 
 First release.
@@ -66,15 +136,16 @@ Export to CSV and plot in LibreOffice Calc.
 batch wake-ups and saves battery. Tests do not fire at exactly the displayed
 second.
 
-**The engine's numbers are the engine's numbers.** A speed test measures the
-path to one server at one moment. Both supported engines pick the server
-themselves and this release does not let you pin one, so a change in chosen
-server can shift results independently of your connection. The server is
-recorded on every row so you can see when that happened.
+**The Ookla engine must be installed separately.** Its licence forbids
+redistribution, so the application cannot ship it and does nothing useful
+until it is present. On Ubuntu 24.04 the install needs two non-obvious
+workarounds, both documented in the README and built into the setup screen.
 
-**`speedtest-cli` reports less than Ookla's CLI.** No jitter, no packet loss,
-no per-direction latency. Those columns stay empty for its results rather
-than being filled with zeros.
+**The engine's numbers are the engine's numbers.** A speed test measures the
+path to one server at one moment. The engine picks the server itself and this
+release does not let you pin one, so a change in chosen server can shift
+results independently of your connection. The server is recorded on every row
+so you can see when that happened.
 
 **Interface and connection type are best-effort.** Read from `/proc/net/route`
 and `/sys/class/net`. On unusual setups — some VPNs, bridges, containers —
@@ -98,7 +169,7 @@ open.
 
 ## Verification status
 
-194 automated tests pass on Ubuntu 24.04.4 with Python 3.12.3 and GTK 4.14.5.
+192 automated tests pass on Ubuntu 24.04.4 with Python 3.12.3 and GTK 4.14.5.
 The suite uses a fake engine throughout and never consumes bandwidth.
 
 Of the 17 manual acceptance tests, 4 were verified directly, 9 are covered by
