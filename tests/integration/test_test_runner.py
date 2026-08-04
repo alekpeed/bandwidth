@@ -254,42 +254,45 @@ class TestOverlapPrevention:
         runner.run_test(TriggerType.MANUAL)
         assert is_test_running() is False
 
-    def test_the_lock_is_held_across_processes(self, database, isolated_home):
-        """The lock has to work between the window and the timer, which are
-        separate processes, so it is checked from a second process.
+    def test_the_lock_is_held_across_processes(self, isolated_home):
+        """The lock must be visible from another process.
 
-        The engine deliberately runs long. The probe pays for a fresh Python
-        interpreter and an import of the package before it can look, which
-        under a loaded test run took longer than a 2-second window -- the
-        lock was released before the probe reached it and the test failed for
-        reasons that had nothing to do with locking.
+        In production the holder is the systemd timer and the checker is the
+        window, so seeing the lock across a process boundary is the whole
+        point.
+
+        The lock is taken directly rather than by racing a running test. An
+        earlier version started a slow test and hoped the probe would look
+        while it was still going, which lost the race under load and failed
+        for reasons that had nothing to do with locking.
         """
         import subprocess
         import sys
 
-        slow = FakeEngine(BEHAVIOUR_SUCCESS, delay_seconds=8.0)
-        runner = TestRunner(database, engine=slow, timeout_seconds=30)
-        thread = threading.Thread(target=lambda: runner.run_test(TriggerType.MANUAL))
-        thread.start()
-        try:
-            _wait_until(lambda: is_test_running(), timeout=5)
-            probe = subprocess.run(
-                [
-                    sys.executable,
-                    "-c",
-                    "import sys; sys.path.insert(0, %r);"
-                    "from bandwidth_logger.core.test_runner import is_test_running;"
-                    "print(is_test_running())" % str(_source_root()),
-                ],
-                capture_output=True,
-                text=True,
-                env={**os.environ, "BANDWIDTH_LOGGER_HOME": str(isolated_home)},
-                timeout=30,
-            )
-        finally:
-            thread.join(timeout=30)
+        from bandwidth_logger.core.test_runner import _exclusive_lock
 
-        assert probe.stdout.strip() == "True", probe.stderr
+        probe = (
+            "import sys; sys.path.insert(0, %r);"
+            "from bandwidth_logger.core.test_runner import is_test_running;"
+            "print(is_test_running())" % str(_source_root())
+        )
+        environment = {**os.environ, "BANDWIDTH_LOGGER_HOME": str(isolated_home)}
+
+        with _exclusive_lock() as acquired:
+            assert acquired, "the test could not take the lock it means to hold"
+            held = subprocess.run(
+                [sys.executable, "-c", probe],
+                capture_output=True, text=True, env=environment, timeout=60,
+            )
+
+        # And released again once the holder lets go.
+        free = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True, text=True, env=environment, timeout=60,
+        )
+
+        assert held.stdout.strip() == "True", held.stderr
+        assert free.stdout.strip() == "False", free.stderr
 
 
 class TestSharedCodePath:

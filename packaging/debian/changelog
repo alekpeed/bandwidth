@@ -1,3 +1,18 @@
+bandwidth-logger (1.6.0-1) noble; urgency=medium
+
+  * Work the next run time out from the recorded history when systemd will
+    not report it. OnUnitActiveSec fires one interval after the service last
+    ran, and the application already records exactly when that was, so the
+    answer can be derived without asking systemd at all. It is labelled
+    "about" so a calculation is never mistaken for systemd's own figure.
+  * Do not offer a stale estimate: if the expected time is well past, the
+    schedule was interrupted and the history is the wrong basis for a
+    prediction.
+  * Make the cross-process lock test deterministic by taking the lock
+    directly rather than racing a running test.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 18:00:00 +0000
+
 bandwidth-logger (1.5.0-1) noble; urgency=medium
 
   * Read the next run time from "systemctl list-timers --json" rather than

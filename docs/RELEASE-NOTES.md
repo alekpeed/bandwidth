@@ -1,5 +1,41 @@
 # Release notes
 
+## 1.6.0 — 4 August 2026
+
+### The next run time, computed rather than asked for
+
+1.5.0 read the next run from `systemctl list-timers --json`. On the affected
+machine that did not work either, and the window fell back to
+**Scheduled (next run time unavailable)** — true, but not useful.
+
+Rather than chase a third systemd interface, this release computes the answer
+from data the application already owns. `OnUnitActiveSec` fires one interval
+after the service last ran, and every run is recorded with its start time, so
+the next run is simply *last run + interval*.
+
+It is shown as **about 10:12:18**. An estimate is labelled as one; presenting
+a calculation as though systemd had reported it would repeat exactly the
+overconfidence that produced "Not scheduled" for a timer that was running
+perfectly.
+
+The order is: ask `list-timers`, then the `show` properties, then compute.
+When systemd does give a straight answer it is still preferred and shown
+without the "about".
+
+A stale history produces no estimate at all. If the expected time is well
+past, the schedule was interrupted and the recorded history is the wrong
+basis for a prediction — better to say the time is unavailable than to
+display a confident wrong one.
+
+### Test suite
+
+The cross-process lock test now takes the lock directly instead of starting a
+slow test and hoping the probe looks while it is still running. That race
+failed under load for reasons unrelated to locking. The test is deterministic
+and the suite is faster for it.
+
+---
+
 ## 1.5.0 — 4 August 2026
 
 Finishes the fix 1.4.0 got wrong.

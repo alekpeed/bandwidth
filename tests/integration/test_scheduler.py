@@ -512,3 +512,91 @@ class TestNextRunFromListTimers:
         status = scheduler.status()
 
         assert abs((status.next_run_utc - moment).total_seconds()) < 2
+
+
+class TestEstimatedNextRun:
+    """Working the next run out from the recorded history.
+
+    systemd's reporting of the next elapse proved unreliable across versions:
+    a timer counting down perfectly reported "infinity" through `show`, and
+    `list-timers --json` is not available everywhere either. Since
+    OnUnitActiveSec fires one interval after the service last ran, and the
+    application already records exactly when that was, the answer can be
+    derived from data it owns -- and is labelled as an estimate.
+    """
+
+    def _enable(self, database, systemctl, minutes=5):
+        from bandwidth_logger.storage.database import (
+            SETTING_AUTO_ENABLED,
+            SETTING_INTERVAL_MINUTES,
+        )
+
+        database.set_bool(SETTING_AUTO_ENABLED, True)
+        database.set_int(SETTING_INTERVAL_MINUTES, minutes)
+        systemctl.active = True
+        systemctl.list_timers_json = "[]"
+        systemctl.next_elapse_usec = 0
+        systemctl.next_elapse_monotonic_usec = "infinity"
+
+    def test_the_next_run_is_derived_from_the_last_one(self, scheduler, systemctl, database):
+        self._enable(database, systemctl, minutes=5)
+        last = datetime.now(timezone.utc) - timedelta(minutes=2)
+        database.insert_run(make_run(moment=last))
+
+        status = scheduler.status()
+
+        assert status.next_run_utc is not None
+        assert status.next_run_estimated is True
+        assert abs((status.next_run_utc - (last + timedelta(minutes=5))).total_seconds()) < 2
+
+    def test_an_estimate_is_labelled_as_one(self, scheduler, systemctl, database):
+        """Presenting a calculation as systemd's own figure would repeat the
+        overconfidence that produced "Not scheduled" for a running timer.
+        """
+        self._enable(database, systemctl, minutes=5)
+        database.insert_run(make_run(moment=datetime.now(timezone.utc) - timedelta(minutes=1)))
+
+        assert scheduler.status().next_run_display().startswith("about ")
+
+    def test_systemd_is_preferred_over_the_estimate(self, scheduler, systemctl, database):
+        import json
+
+        self._enable(database, systemctl, minutes=5)
+        database.insert_run(make_run(moment=datetime.now(timezone.utc) - timedelta(minutes=2)))
+        reported = datetime.now(timezone.utc) + timedelta(minutes=4)
+        systemctl.list_timers_json = json.dumps(
+            [{"unit": TIMER_UNIT, "next": int(reported.timestamp() * 1_000_000)}]
+        )
+
+        status = scheduler.status()
+
+        assert status.next_run_estimated is False
+        assert not status.next_run_display().startswith("about ")
+        assert abs((status.next_run_utc - reported).total_seconds()) < 2
+
+    def test_a_stale_history_produces_no_estimate(self, scheduler, systemctl, database):
+        """If the expected time is long past, the schedule was interrupted and
+        the history is the wrong basis for a prediction.
+        """
+        self._enable(database, systemctl, minutes=5)
+        database.insert_run(make_run(moment=datetime.now(timezone.utc) - timedelta(hours=3)))
+
+        status = scheduler.status()
+
+        assert status.next_run_utc is None
+        assert status.next_run_display() == "Scheduled (next run time unavailable)"
+
+    def test_an_empty_history_produces_no_estimate(self, scheduler, systemctl, database):
+        self._enable(database, systemctl, minutes=5)
+
+        assert scheduler.status().next_run_utc is None
+
+    def test_nothing_is_estimated_while_the_timer_is_inactive(self, scheduler, systemctl, database):
+        self._enable(database, systemctl, minutes=5)
+        systemctl.active = False
+        database.insert_run(make_run(moment=datetime.now(timezone.utc) - timedelta(minutes=1)))
+
+        status = scheduler.status()
+
+        assert status.next_run_utc is None
+        assert status.next_run_display() == "Not scheduled (scheduler error)"

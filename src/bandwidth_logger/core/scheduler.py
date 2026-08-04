@@ -137,6 +137,9 @@ class SchedulerStatus:
     last_trigger_utc: datetime | None
     last_result: str | None
     detail: str = ""
+    #: True when the next run was worked out from the recorded history rather
+    #: than reported by systemd, so the display can say "about".
+    next_run_estimated: bool = False
 
     @property
     def healthy(self) -> bool:
@@ -153,11 +156,16 @@ class SchedulerStatus:
         if not self.timer_active:
             return "Not scheduled (scheduler error)"
         if self.next_run_utc is None:
-            # The timer is active and counting down; only the exact time
-            # could not be read. Saying "Not scheduled" here would be a
-            # plain falsehood about work that is really queued.
+            # The timer is active and counting down; only the time could not
+            # be established. Saying "Not scheduled" here would be a plain
+            # falsehood about work that is really queued.
             return "Scheduled (next run time unavailable)"
-        return self.next_run_utc.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+        shown = self.next_run_utc.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        # An estimate is labelled as one. Presenting a calculated time as if
+        # systemd had reported it would be the same kind of overconfidence
+        # that produced "Not scheduled" for a running timer.
+        return f"about {shown}" if self.next_run_estimated else shown
 
 
 class Scheduler:
@@ -374,13 +382,20 @@ WantedBy=timers.target
         if enabled and not timer_active:
             detail = self._failure_detail(properties)
 
+        next_run = self._next_elapse(properties)
+        estimated = False
+        if next_run is None and timer_active:
+            next_run = self._estimated_next_run(interval)
+            estimated = next_run is not None
+
         return SchedulerStatus(
             supported=True,
             enabled=enabled,
             timer_active=timer_active,
             timer_enabled_at_login=timer_enabled_at_login,
             interval_minutes=interval,
-            next_run_utc=self._next_elapse(properties),
+            next_run_utc=next_run,
+            next_run_estimated=estimated,
             last_trigger_utc=_usec_to_datetime(properties.get("LastTriggerUSec")),
             last_result=properties.get("Result") or None,
             detail=detail,
@@ -409,6 +424,36 @@ WantedBy=timers.target
         if from_list is not None:
             return from_list
         return _next_elapse_from_properties(properties)
+
+    def _estimated_next_run(self, interval_minutes: int) -> datetime | None:
+        """Work out the next run from the recorded history.
+
+        ``OnUnitActiveSec`` fires one interval after the service last ran, and
+        the application already records exactly when that was -- so the next
+        run can be derived without asking systemd at all.
+
+        This exists because systemd's own reporting of the next elapse varies
+        by version in ways that proved unreliable: a timer counting down
+        perfectly reported ``infinity`` through one interface and the correct
+        time through another. Rather than depend on that, the answer is
+        computed from data the application owns, and labelled as an estimate
+        so it is never mistaken for systemd's own figure.
+        """
+        latest = self.database.latest_run()
+        if latest is None:
+            return None
+
+        started = parse_iso(latest.started_at_utc)
+        if started is None:
+            return None
+
+        expected = started + timedelta(minutes=interval_minutes)
+        # A stale estimate is worse than none: if the expected time is well
+        # past, the schedule was interrupted and the history is the wrong
+        # basis for a prediction.
+        if expected < utc_now() - timedelta(minutes=interval_minutes):
+            return None
+        return expected
 
     def _next_elapse_from_list_timers(self) -> datetime | None:
         completed = self._systemctl(
