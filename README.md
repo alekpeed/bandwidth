@@ -32,17 +32,38 @@ history of readings, with the failures included, proves something.
 
 Requires Ubuntu 24.04 LTS or later, on x86-64.
 
-Download `bandwidth-logger_1.0.0-1_all.deb` and install it:
+**Download `bandwidth-logger_1.0.0-1_all.deb` and double-click it.** Your
+software installer opens, you press Install, and that is the whole procedure.
+
+Then launch **Bandwidth Logger** from the application menu — press the Super
+key and start typing `bandwidth`.
+
+Nothing after this point needs a terminal.
+
+<details>
+<summary>Installing from a terminal instead</summary>
 
 ```bash
+cd ~/Downloads
 sudo apt install ./bandwidth-logger_1.0.0-1_all.deb
 ```
 
-Double-clicking the `.deb` in Files, or opening it with the App Center, works
-the same way. `apt` is used rather than `dpkg -i` because it pulls in the
-dependencies in one step.
+The leading `./` is required; without it `apt` looks for a package of that
+name in Ubuntu's archive and reports that it cannot find one. `apt` is used
+rather than `dpkg -i` because it pulls in the dependencies in one step.
 
-Then launch **Bandwidth Logger** from the application menu.
+If `apt` reports `Unsupported file ... given on commandline`, it has not
+recognised the file as a Debian archive. Check the download with:
+
+```bash
+file ~/Downloads/bandwidth-logger_1.0.0-1_all.deb
+```
+
+A good copy reports `Debian binary package (format 2.0)`. Anything else means
+the download did not complete or was altered in transit — fetch it again, or
+just double-click it in Files, which is the supported route.
+
+</details>
 
 ### About the speed-test engine
 
