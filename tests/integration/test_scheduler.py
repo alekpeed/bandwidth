@@ -45,6 +45,9 @@ class FakeSystemctl:
         #: What ``list-timers --json=short`` returns. None means the command
         #: is unsupported, mirroring an older systemd.
         self.list_timers_json: str | None = None
+        #: Plain ``list-timers --timestamp=unix`` output. None means the
+        #: option is unsupported.
+        self.list_timers_unix: str | None = None
         self.available = True
 
     def install(self, monkeypatch) -> None:
@@ -67,6 +70,16 @@ class FakeSystemctl:
             if check:
                 raise SchedulerError("systemctl is not available on this system.")
             return None
+
+        if "list-timers" in arguments and "--timestamp=unix" in arguments:
+            if self.list_timers_unix is None:
+                return subprocess.CompletedProcess(
+                    args=list(arguments), returncode=1, stdout="",
+                    stderr="systemctl: unrecognized option '--timestamp=unix'",
+                )
+            return subprocess.CompletedProcess(
+                args=list(arguments), returncode=0, stdout=self.list_timers_unix, stderr=""
+            )
 
         if "list-timers" in arguments:
             if self.list_timers_json is None:
@@ -600,3 +613,66 @@ class TestEstimatedNextRun:
 
         assert status.next_run_utc is None
         assert status.next_run_display() == "Not scheduled (scheduler error)"
+
+
+class TestNextRunFromUnixTimestamps:
+    """``list-timers --timestamp=unix``.
+
+    systemd 255 rejects ``--json=short`` for list-timers outright
+    ("unrecognized option"), so the plain listing is asked for with unix
+    timestamps -- immune to locale, and to the pretty-printing that made the
+    show properties unusable.
+    """
+
+    def _enable(self, database, systemctl):
+        from bandwidth_logger.storage.database import SETTING_AUTO_ENABLED
+
+        database.set_bool(SETTING_AUTO_ENABLED, True)
+        systemctl.active = True
+        systemctl.next_elapse_usec = 0
+        systemctl.next_elapse_monotonic_usec = "infinity"
+
+    def test_the_next_column_is_read_as_the_next_run(self, scheduler, systemctl, database):
+        self._enable(database, systemctl)
+        moment = datetime.now(timezone.utc) + timedelta(minutes=5)
+        last = datetime.now(timezone.utc) - timedelta(seconds=30)
+        systemctl.list_timers_unix = (
+            f"@{int(moment.timestamp())} 4min 58s @{int(last.timestamp())} 30s ago "
+            f"{TIMER_UNIT} {SERVICE_UNIT}\n"
+        )
+
+        status = scheduler.status()
+
+        assert status.next_run_estimated is False
+        assert abs((status.next_run_utc - moment).total_seconds()) < 2
+
+    def test_an_unsupported_option_falls_through_quietly(self, scheduler, systemctl, database):
+        """Exactly what systemd 255 does. It must not become an error."""
+        self._enable(database, systemctl)
+        systemctl.list_timers_unix = None
+        systemctl.list_timers_json = None
+        database.insert_run(make_run(moment=datetime.now(timezone.utc) - timedelta(minutes=1)))
+
+        status = scheduler.status()
+
+        # Falls all the way through to the computed estimate.
+        assert status.next_run_utc is not None
+        assert status.next_run_estimated is True
+
+    def test_a_row_with_no_next_time_yields_nothing(self, scheduler, systemctl, database):
+        self._enable(database, systemctl)
+        systemctl.list_timers_unix = f"- - - - {TIMER_UNIT} {SERVICE_UNIT}\n"
+        systemctl.list_timers_json = "[]"
+
+        assert scheduler.status().next_run_utc is None
+
+    def test_systemd_is_preferred_over_the_estimate(self, scheduler, systemctl, database):
+        self._enable(database, systemctl)
+        database.insert_run(make_run(moment=datetime.now(timezone.utc) - timedelta(minutes=2)))
+        moment = datetime.now(timezone.utc) + timedelta(minutes=3)
+        systemctl.list_timers_unix = f"@{int(moment.timestamp())} 3min {TIMER_UNIT}\n"
+
+        status = scheduler.status()
+
+        assert status.next_run_estimated is False
+        assert not status.next_run_display().startswith("about ")

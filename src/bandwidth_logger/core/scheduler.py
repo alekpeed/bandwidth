@@ -456,6 +456,24 @@ WantedBy=timers.target
         return expected
 
     def _next_elapse_from_list_timers(self) -> datetime | None:
+        """Ask ``list-timers``, which is the view that actually computes this.
+
+        Two forms are tried because support varies. ``--json`` is rejected
+        outright by systemd 255 ("unrecognized option"), so the plain listing
+        is asked for with ``--timestamp=unix``, which renders times as
+        ``@<seconds>`` and is therefore immune to locale and to the
+        pretty-printing that made the ``show`` properties unusable.
+        """
+        unix = self._systemctl(
+            "--user", "list-timers", TIMER_UNIT, "--all",
+            "--timestamp=unix", "--no-legend", "--no-pager",
+            check=False,
+        )
+        if unix is not None and unix.returncode == 0:
+            moment = _first_unix_timestamp(unix.stdout)
+            if moment is not None:
+                return moment
+
         completed = self._systemctl(
             "--user", "list-timers", TIMER_UNIT, "--all", "--json=short", check=False
         )
@@ -618,6 +636,30 @@ def _next_elapse_from_properties(properties: dict[str, str]) -> datetime | None:
     # so the difference converts straight into wall-clock time.
     seconds_away = target - time.monotonic()
     return utc_now() + timedelta(seconds=seconds_away)
+
+
+def _first_unix_timestamp(text: str) -> datetime | None:
+    """Pull the first ``@<seconds>`` token out of a listing.
+
+    ``systemctl --timestamp=unix`` renders every time that way, and in
+    ``list-timers`` the first column is NEXT -- so the first token is the
+    next firing. A row whose next elapse is unknown shows ``-`` instead and
+    yields nothing here.
+    """
+    for token in (text or "").split():
+        if not token.startswith("@"):
+            continue
+        try:
+            seconds = int(token[1:])
+        except ValueError:
+            continue
+        if seconds <= 0:
+            continue
+        try:
+            return datetime.fromtimestamp(seconds, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
 
 
 def _usec_to_datetime(value: object) -> datetime | None:

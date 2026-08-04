@@ -8,6 +8,10 @@ bandwidth-logger (1.6.0-1) noble; urgency=medium
   * Do not offer a stale estimate: if the expected time is well past, the
     schedule was interrupted and the history is the wrong basis for a
     prediction.
+  * Read the next run from "list-timers --timestamp=unix". systemd 255
+    rejects "--json=short" for list-timers outright, so the plain listing is
+    requested with unix timestamps, which is immune to locale and to the
+    pretty-printing that made the show properties unusable.
   * Make the cross-process lock test deterministic by taking the lock
     directly rather than racing a running test.
 

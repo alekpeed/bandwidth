@@ -4,9 +4,23 @@
 
 ### The next run time, computed rather than asked for
 
-1.5.0 read the next run from `systemctl list-timers --json`. On the affected
-machine that did not work either, and the window fell back to
-**Scheduled (next run time unavailable)** — true, but not useful.
+1.5.0 read the next run from `systemctl list-timers --json`. systemd 255
+rejects that outright:
+
+```
+$ systemctl --user list-timers bandwidth-logger-test.timer --all --json=short
+systemctl: unrecognized option '--json=short'
+```
+
+so the window fell back to **Scheduled (next run time unavailable)** — true,
+but not useful. Two things changed.
+
+**The listing is now requested with `--timestamp=unix`**, which renders every
+time as `@<seconds>`. That is supported where `--json` is not, and being a
+bare number it is immune both to locale and to the pretty-printing that made
+the `show` properties unusable in the first place.
+
+**And there is now an answer that needs no systemd at all.**
 
 Rather than chase a third systemd interface, this release computes the answer
 from data the application already owns. `OnUnitActiveSec` fires one interval
