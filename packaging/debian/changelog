@@ -1,3 +1,21 @@
+bandwidth-logger (1.4.0-1) noble; urgency=medium
+
+  * Fix "Next test: Not scheduled" being shown while the timer was running
+    normally. The timer is defined with OnActiveSec/OnUnitActiveSec, which
+    are monotonic, so systemd reports the next firing in
+    NextElapseUSecMonotonic and leaves NextElapseUSecRealtime at zero. Only
+    the realtime property was read, so a healthy, actively counting timer was
+    reported as not scheduled. Both are now read.
+  * Reword the automatic testing control. The state word sat to the right of
+    the switch, where it reads as a label for the control beside it rather
+    than as the switch's own state, so the switch position could be read
+    backwards. It now reads "Automatic testing is currently Off" with the
+    switch after it.
+  * Re-sync the switch from the stored setting on every refresh, so the
+    toggle and the schedule cannot silently disagree.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 16:00:00 +0000
+
 bandwidth-logger (1.3.0-1) noble; urgency=medium
 
   * Add Delete selected. Rows in the table can now be multi-selected and

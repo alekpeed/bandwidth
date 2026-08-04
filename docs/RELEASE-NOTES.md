@@ -1,5 +1,42 @@
 # Release notes
 
+## 1.4.0 — 4 August 2026
+
+Two bugs found by watching someone use the application.
+
+### "Not scheduled" while the timer was running fine
+
+The window showed **Next test: Not scheduled** with automatic testing on, the
+switch on, and the state Idle — while the systemd timer was counting down
+correctly the whole time.
+
+The timer is defined with `OnActiveSec`/`OnUnitActiveSec`. Those are
+**monotonic** timers, measured from boot rather than from the epoch, and
+systemd reports them in `NextElapseUSecMonotonic`, leaving
+`NextElapseUSecRealtime` at zero. Only the realtime property was read, so the
+answer was always "nothing scheduled".
+
+The irony is pointed: the scheduler was built on systemd precisely so the
+window could report the *real* state rather than guess — and then it read the
+wrong property and reported the opposite of the truth. Both are now read, and
+the monotonic value is converted to wall-clock time.
+
+### The switch could be read backwards
+
+The control was laid out as `Automatic testing [switch] Off`. With the state
+word to the *right* of the switch, it reads as a label for whatever comes
+next, not as the switch's own state — so a switch sitting in the off position
+looked like it was on and merely labelled oddly.
+
+It now reads **Automatic testing is currently Off** with the switch after the
+words, so the state attaches to the sentence rather than floating beside an
+unrelated control.
+
+The switch is also re-synced from the stored setting on every refresh, so the
+toggle and the actual schedule cannot silently disagree.
+
+---
+
 ## 1.3.0 — 4 August 2026
 
 Two things found by using the application.

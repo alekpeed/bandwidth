@@ -191,6 +191,14 @@ class MainWindow(Gtk.ApplicationWindow):
         outer.append(top)
 
         auto_label = Gtk.Label(label="_Automatic testing", use_underline=True)
+
+        # Reads "Automatic testing is currently Off [toggle]". Placing the
+        # state after the switch made it look like a label for the control to
+        # its right, so the switch's position was read backwards.
+        self.auto_state_label = Gtk.Label(label="is currently Off")
+        self.auto_state_label.set_xalign(0.0)
+        self.auto_state_label.set_width_chars(17)
+
         self.auto_switch = Gtk.Switch()
         self.auto_switch.set_valign(Gtk.Align.CENTER)
         self.auto_switch.update_property(
@@ -199,11 +207,8 @@ class MainWindow(Gtk.ApplicationWindow):
         auto_label.set_mnemonic_widget(self.auto_switch)
         self.auto_switch.connect("state-set", self._on_auto_switch)
         top.append(auto_label)
-        top.append(self.auto_switch)
-
-        self.auto_state_label = Gtk.Label(label="Off")
-        self.auto_state_label.set_width_chars(4)
         top.append(self.auto_state_label)
+        top.append(self.auto_switch)
 
         top.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
 
@@ -465,7 +470,23 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self._last_status = status
         self.next_test_label.set_text(f"Next test: {status.next_run_display()}")
-        self.auto_state_label.set_text("On" if status.enabled else "Off")
+        self.auto_state_label.set_text(
+            "is currently On" if status.enabled else "is currently Off"
+        )
+
+        # Keep the switch showing what is actually stored. Without this the
+        # toggle and the setting can drift apart -- the switch says one thing,
+        # the schedule does another, and nothing on screen reveals which is
+        # true. Suppressed so re-syncing cannot itself re-trigger apply().
+        if self.auto_switch.get_active() != status.enabled:
+            log.info(
+                "Switch showed %s but the stored setting is %s; correcting the switch",
+                self.auto_switch.get_active(),
+                status.enabled,
+            )
+            self._suppress_switch = True
+            self.auto_switch.set_active(status.enabled)
+            self._suppress_switch = False
 
         running = self.runner.is_running or (self._test_thread is not None and self._test_thread.is_alive())
         if running:
@@ -555,6 +576,12 @@ class MainWindow(Gtk.ApplicationWindow):
             self._select_interval(self.database.get_int(SETTING_INTERVAL_MINUTES, 30))
             return
 
+        log.info(
+            "Applying schedule: enabled=%s interval=%s from_apply_button=%s",
+            enabled,
+            minutes,
+            from_apply_button,
+        )
         try:
             status = self.scheduler.apply(
                 enabled=enabled,

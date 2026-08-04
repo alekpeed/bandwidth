@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -375,7 +376,7 @@ WantedBy=timers.target
             timer_active=timer_active,
             timer_enabled_at_login=timer_enabled_at_login,
             interval_minutes=interval,
-            next_run_utc=_usec_to_datetime(properties.get("NextElapseUSecRealtime")),
+            next_run_utc=_next_elapse(properties),
             last_trigger_utc=_usec_to_datetime(properties.get("LastTriggerUSec")),
             last_result=properties.get("Result") or None,
             detail=detail,
@@ -391,6 +392,7 @@ WantedBy=timers.target
             "--property=UnitFileState",
             "--property=Result",
             "--property=NextElapseUSecRealtime",
+            "--property=NextElapseUSecMonotonic",
             "--property=LastTriggerUSec",
             check=False,
         )
@@ -484,6 +486,39 @@ WantedBy=timers.target
         self.database.insert_run(run)
         log.info("Recorded interrupted scheduling window of %s", _describe_gap(gap))
         return run
+
+
+def _next_elapse(properties: dict[str, str]) -> datetime | None:
+    """When the timer next fires, as an absolute time.
+
+    systemd reports the next elapse in whichever clock the timer is defined
+    against. This timer uses ``OnActiveSec``/``OnUnitActiveSec``, which are
+    **monotonic**, so ``NextElapseUSecRealtime`` is 0 and the answer lives in
+    ``NextElapseUSecMonotonic`` -- measured from boot, not from the epoch.
+    Reading only the realtime property made a perfectly healthy timer report
+    "Not scheduled".
+
+    Both are read, so a calendar-based timer would still work if one is ever
+    introduced.
+    """
+    realtime = _usec_to_datetime(properties.get("NextElapseUSecRealtime"))
+    if realtime is not None:
+        return realtime
+
+    monotonic_usec = properties.get("NextElapseUSecMonotonic")
+    if not monotonic_usec:
+        return None
+    try:
+        target = int(monotonic_usec) / 1_000_000
+    except ValueError:
+        return None
+    if target <= 0:
+        return None
+
+    # CLOCK_MONOTONIC is what both systemd and time.monotonic() use on Linux,
+    # so the difference converts straight into wall-clock time.
+    seconds_away = target - time.monotonic()
+    return utc_now() + timedelta(seconds=seconds_away)
 
 
 def _usec_to_datetime(value: str | None) -> datetime | None:

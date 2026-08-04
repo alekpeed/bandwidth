@@ -41,6 +41,7 @@ class FakeSystemctl:
         self.active = False
         self.unit_file_enabled = False
         self.next_elapse_usec: int | None = None
+        self.next_elapse_monotonic_usec: int | None = None
         self.available = True
 
     def install(self, monkeypatch) -> None:
@@ -73,6 +74,7 @@ class FakeSystemctl:
                 f"UnitFileState={'enabled' if self.unit_file_enabled else 'disabled'}\n"
                 "Result=success\n"
                 f"NextElapseUSecRealtime={self.next_elapse_usec or 0}\n"
+                f"NextElapseUSecMonotonic={self.next_elapse_monotonic_usec or 0}\n"
                 "LastTriggerUSec=0\n"
             )
         elif "is-enabled" in arguments:
@@ -350,3 +352,57 @@ class TestMissedRuns:
         database.set_bool(SETTING_AUTO_ENABLED, True)
         assert scheduler.record_missed_window() is None
         assert database.count_runs() == 0
+
+
+class TestNextRunFromAMonotonicTimer:
+    """Reading when the timer next fires.
+
+    The timer is defined with OnActiveSec/OnUnitActiveSec, which are
+    *monotonic*. systemd reports those in NextElapseUSecMonotonic and leaves
+    NextElapseUSecRealtime at 0. Reading only the realtime property made a
+    perfectly healthy, actively counting timer report "Not scheduled" -- the
+    schedule worked, the window said it did not.
+    """
+
+    def test_a_monotonic_next_elapse_is_converted_to_wall_clock(
+        self, scheduler, systemctl, database
+    ):
+        import time as time_module
+
+        from bandwidth_logger.storage.database import SETTING_AUTO_ENABLED
+
+        database.set_bool(SETTING_AUTO_ENABLED, True)
+        systemctl.active = True
+        # Five minutes from now, expressed the way systemd would.
+        systemctl.next_elapse_monotonic_usec = int((time_module.monotonic() + 300) * 1_000_000)
+        systemctl.next_elapse_usec = 0
+
+        status = scheduler.status()
+
+        assert status.next_run_utc is not None, "a monotonic timer must still report a next run"
+        seconds_away = (status.next_run_utc - datetime.now(timezone.utc)).total_seconds()
+        assert 290 < seconds_away < 310
+        assert status.next_run_display() != "Not scheduled"
+
+    def test_a_realtime_next_elapse_still_wins_when_present(self, scheduler, systemctl, database):
+        from bandwidth_logger.storage.database import SETTING_AUTO_ENABLED
+
+        database.set_bool(SETTING_AUTO_ENABLED, True)
+        systemctl.active = True
+        moment = datetime.now(timezone.utc) + timedelta(minutes=30)
+        systemctl.next_elapse_usec = int(moment.timestamp() * 1_000_000)
+        systemctl.next_elapse_monotonic_usec = 0
+
+        status = scheduler.status()
+
+        assert abs((status.next_run_utc - moment).total_seconds()) < 2
+
+    def test_neither_property_set_means_nothing_scheduled(self, scheduler, systemctl, database):
+        from bandwidth_logger.storage.database import SETTING_AUTO_ENABLED
+
+        database.set_bool(SETTING_AUTO_ENABLED, True)
+        systemctl.active = True
+        systemctl.next_elapse_usec = 0
+        systemctl.next_elapse_monotonic_usec = 0
+
+        assert scheduler.status().next_run_utc is None
