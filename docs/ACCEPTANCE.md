@@ -33,8 +33,8 @@ Nothing is marked passed that was not actually exercised.
 | OS | Ubuntu 24.04.4 LTS (headless container) |
 | Python | 3.12.3 (system) and 3.11.15 |
 | GTK | 4.14.5, PyGObject 3.48.2 |
-| Package built | `bandwidth-logger_1.0.0-1_all.deb` (48 kB) |
-| Test suite | 194 passed |
+| Package built | `bandwidth-logger_1.6.0-1_all.deb` |
+| Test suite | 232 passed |
 | lintian | 1 warning (`initial-upload-closes-no-bugs`, expected for a first release) |
 
 ---
@@ -44,7 +44,7 @@ Nothing is marked passed that was not actually exercised.
 ### 1. Install through the .deb without manually creating files — **PASS**
 
 ```
-$ sudo apt install ./dist/bandwidth-logger_1.0.0-1_all.deb
+$ sudo apt install ./dist/bandwidth-logger_1.6.0-1_all.deb
 Setting up speedtest-cli (2.1.3-2) ...
 Setting up bandwidth-logger (1.0.0-1) ...
 Processing triggers for hicolor-icon-theme (0.17-2) ...
@@ -57,7 +57,12 @@ $ which bandwidth-logger bandwidth-logger-run
 No file was created by hand. The fallback engine `speedtest-cli` was pulled
 in automatically as a dependency, so the application is usable immediately.
 
-### 2. Launch from the application menu — **NOT VERIFIED** (no desktop session)
+### 2. Launch from the application menu — **PASS** (confirmed on a desktop)
+
+Verified after release on a real Ubuntu desktop: the application launches from
+the menu and the window opens correctly.
+
+The original headless finding is kept below for the record.
 
 What was verified: the desktop entry installs to
 `/usr/share/applications/org.bandwidthlogger.BandwidthLogger.desktop`, the
@@ -124,7 +129,25 @@ Persistent=false
 
 Against a stubbed `systemctl` — not a live timer.
 
-### 5. Close the window; a test still runs at the scheduled time — **NOT VERIFIED** (no systemd user instance)
+### 5. Close the window; a test still runs at the scheduled time — **PASS** (confirmed on a desktop)
+
+Verified after release. With a 5-minute interval and the window closed, a
+scheduled test ran unattended and appeared in the table:
+
+```
+2026-08-04 09:40:09   Success   930.39 Mbps   Spectrum (New York, NY)
+2026-08-04 09:35:18   Success   929.47 Mbps   Spectrum (New York, NY)
+```
+
+`systemctl --user list-timers` agreed:
+
+```
+NEXT                        LEFT      LAST                        PASSED
+Tue 2026-08-04 10:12:18 EDT 2min 34s  Tue 2026-08-04 10:07:18 EDT 2min 25s ago
+```
+
+This is the item the whole systemd design exists for. The original headless
+finding is kept below for the record.
 
 What is verified: `bandwidth-logger-run --scheduled` — the exact command the
 timer runs — works from a cold process and stores a scheduled record
@@ -262,22 +285,47 @@ Both are installing system software.
 
 | Result | Count | Items |
 |---|---|---|
-| PASS (verified here) | 4 | 1, 15, 16, 17 |
+| PASS (verified directly) | 6 | 1, 2, 5, 15, 16, 17 |
 | PASS (automated) | 9 | 3, 4, 6, 7, 8, 9, 11, 12, 14 |
-| PARTIAL | 1 | 13 (export verified; Calc not opened) |
-| NOT VERIFIED | 3 | 2, 5, 10 |
+| PARTIAL | 1 | 13 (export verified; not opened in Calc) |
+| NOT VERIFIED | 1 | 10 (scheduling resumes after a reboot) |
 
-The three unverified items all need the same thing: a desktop Ubuntu 24.04
-machine with a real login session. They are 2 (menu launch), 5 (test runs
-with the window closed) and 10 (scheduling resumes after reboot) — and 5 and
-10 are the two that matter most, because they are the whole reason the
-scheduler is a systemd user timer rather than an in-application one.
+Items 2 and 5 were confirmed on a real Ubuntu desktop after release. Item 5
+matters most of all — a scheduled test ran with the window closed — because
+it is the reason the scheduler is a systemd user timer rather than something
+inside the application.
+
+Only item 10 remains: enable scheduling, reboot, log in, and confirm a record
+appears without opening the window. The mechanism is
+`systemctl --user enable`, which is asserted by the test suite, but it has not
+been observed end to end.
 
 ---
 
-## Checklist for a desktop machine
+## Field findings after release
 
-Roughly 90 minutes, most of it waiting for timers.
+Real use on a gigabit Ubuntu desktop found nine defects the automated suite
+could not, each fixed in the release named:
+
+| Defect | Release |
+|---|---|
+| The fallback engine reported half the real speed on a fast line | 1.1.0 |
+| Ookla's own install commands fail on Ubuntu 24.04 (no `noble` repository) | 1.1.0 |
+| The `speedtest-cli` dependency blocked Ookla's engine from installing | 1.1.0 |
+| The engine picked the lowest-latency server, which was the slowest — a 33% error | 1.2.0 |
+| Deletion could not remove a single record | 1.3.0 |
+| Apply with the switch off saved the interval and said nothing | 1.3.0 |
+| The switch's state word sat where it could be read backwards | 1.4.0 |
+| "Not scheduled" shown for a timer that was running correctly | 1.4.0–1.6.0 |
+| The cross-process lock test raced and failed under load | 1.6.0 |
+
+The pattern worth noting: none of these were logic errors. They were wrong
+assumptions about the outside world — what an engine measures, which server
+it picks, what `systemctl` reports, how a control reads. A test suite
+confirms the code does what it was written to do; only use confirms it was
+written to do the right thing.
+
+## Remaining checklist for a desktop machine
 
 - [ ] Install the `.deb` on a clean Ubuntu 24.04 desktop, by double-clicking it.
 - [ ] Launch from the application menu. Confirm the icon and name.

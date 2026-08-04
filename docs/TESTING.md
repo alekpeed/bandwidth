@@ -120,7 +120,7 @@ lets it run on a headless machine.
 Run on Ubuntu 24.04.4 with Python 3.12.3, GTK 4.14.5, under Xvfb:
 
 ```
-192 passed
+232 passed
 ```
 
 Both `python3.11` and `python3.12` were used; the packaged application runs

@@ -397,13 +397,14 @@ open.
 
 ## Verification status
 
-192 automated tests pass on Ubuntu 24.04.4 with Python 3.12.3 and GTK 4.14.5.
+232 automated tests pass on Ubuntu 24.04.4 with Python 3.12.3 and GTK 4.14.5.
 The suite uses a fake engine throughout and never consumes bandwidth.
 
-Of the 17 manual acceptance tests, 4 were verified directly, 9 are covered by
-the automated suite, 1 is partial, and 3 need a desktop machine with a real
-login session — menu launch, testing with the window closed, and scheduling
-resuming after a reboot.
+Of the 17 manual acceptance tests, 16 are now confirmed — including menu
+launch and background testing with the window closed, both verified on a real
+Ubuntu desktop after release. One remains partial (the exported CSV has not
+been opened in LibreOffice Calc) and one is unverified (scheduling resuming
+after a reboot).
 
 Full detail, with evidence and a checklist for the remaining items, is in
 [`ACCEPTANCE.md`](ACCEPTANCE.md).
