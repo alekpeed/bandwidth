@@ -257,11 +257,17 @@ class TestOverlapPrevention:
     def test_the_lock_is_held_across_processes(self, database, isolated_home):
         """The lock has to work between the window and the timer, which are
         separate processes, so it is checked from a second process.
+
+        The engine deliberately runs long. The probe pays for a fresh Python
+        interpreter and an import of the package before it can look, which
+        under a loaded test run took longer than a 2-second window -- the
+        lock was released before the probe reached it and the test failed for
+        reasons that had nothing to do with locking.
         """
         import subprocess
         import sys
 
-        slow = FakeEngine(BEHAVIOUR_SUCCESS, delay_seconds=2.0)
+        slow = FakeEngine(BEHAVIOUR_SUCCESS, delay_seconds=8.0)
         runner = TestRunner(database, engine=slow, timeout_seconds=30)
         thread = threading.Thread(target=lambda: runner.run_test(TriggerType.MANUAL))
         thread.start()

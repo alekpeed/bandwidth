@@ -1,3 +1,22 @@
+bandwidth-logger (1.5.0-1) noble; urgency=medium
+
+  * Read the next run time from "systemctl list-timers --json" rather than
+    from "systemctl show". On systemd 255, with the timer active and counting
+    down correctly, show reported NextElapseUSecMonotonic=infinity, omitted
+    NextElapseUSecRealtime, and pretty-printed the timestamps as dates rather
+    than raw microseconds -- while list-timers gave the correct next run to
+    the second. The show properties remain as a fallback for older versions.
+  * Never describe an active timer as "Not scheduled". When the timer is
+    running but its next firing cannot be read, the window now says
+    "Scheduled (next run time unavailable)", which is true, instead of
+    denying that any test is queued.
+  * Tolerate non-numeric systemd time values such as "infinity" instead of
+    failing to parse them.
+  * Make the cross-process lock test tolerate a slow interpreter start; it
+    could fail under load for reasons unrelated to locking.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 17:00:00 +0000
+
 bandwidth-logger (1.4.0-1) noble; urgency=medium
 
   * Fix "Next test: Not scheduled" being shown while the timer was running

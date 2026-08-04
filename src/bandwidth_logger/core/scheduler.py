@@ -22,6 +22,7 @@ Two units are managed, both written to ``~/.config/systemd/user``:
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -152,7 +153,10 @@ class SchedulerStatus:
         if not self.timer_active:
             return "Not scheduled (scheduler error)"
         if self.next_run_utc is None:
-            return "Not scheduled"
+            # The timer is active and counting down; only the exact time
+            # could not be read. Saying "Not scheduled" here would be a
+            # plain falsehood about work that is really queued.
+            return "Scheduled (next run time unavailable)"
         return self.next_run_utc.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -376,11 +380,61 @@ WantedBy=timers.target
             timer_active=timer_active,
             timer_enabled_at_login=timer_enabled_at_login,
             interval_minutes=interval,
-            next_run_utc=_next_elapse(properties),
+            next_run_utc=self._next_elapse(properties),
             last_trigger_utc=_usec_to_datetime(properties.get("LastTriggerUSec")),
             last_result=properties.get("Result") or None,
             detail=detail,
         )
+
+    def _next_elapse(self, properties: dict[str, str]) -> datetime | None:
+        """When the timer next fires.
+
+        ``systemctl show`` turns out to be the wrong source. Observed on
+        systemd 255 with this timer active and counting down correctly:
+
+            NextElapseUSecMonotonic=infinity
+            LastTriggerUSec=Tue 2026-08-04 09:51:17 EDT
+
+        -- the monotonic property reads ``infinity`` for an
+        ``OnUnitActiveSec`` timer whose next firing is computed from the
+        service's last activation, and the timestamp properties are
+        pretty-printed rather than given as raw microseconds. Meanwhile
+        ``list-timers`` reported the correct next run to the second.
+
+        So ``list-timers --json`` is asked first, since that is the code path
+        systemd itself uses to answer this question. The ``show`` properties
+        remain as a fallback for older versions that report raw microseconds.
+        """
+        from_list = self._next_elapse_from_list_timers()
+        if from_list is not None:
+            return from_list
+        return _next_elapse_from_properties(properties)
+
+    def _next_elapse_from_list_timers(self) -> datetime | None:
+        completed = self._systemctl(
+            "--user", "list-timers", TIMER_UNIT, "--all", "--json=short", check=False
+        )
+        if completed is None or completed.returncode != 0:
+            return None
+
+        try:
+            entries = json.loads(completed.stdout or "[]")
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if isinstance(entries, dict):
+            entries = [entries]
+        if not isinstance(entries, list):
+            return None
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            # systemd has used both spellings across versions.
+            for key in ("next", "NextElapseUSecRealtime", "next_elapse"):
+                moment = _usec_to_datetime(entry.get(key))
+                if moment is not None:
+                    return moment
+        return None
 
     def _timer_properties(self) -> dict[str, str]:
         completed = self._systemctl(
@@ -488,8 +542,8 @@ WantedBy=timers.target
         return run
 
 
-def _next_elapse(properties: dict[str, str]) -> datetime | None:
-    """When the timer next fires, as an absolute time.
+def _next_elapse_from_properties(properties: dict[str, str]) -> datetime | None:
+    """Fallback for systemd versions that report raw microseconds.
 
     systemd reports the next elapse in whichever clock the timer is defined
     against. This timer uses ``OnActiveSec``/``OnUnitActiveSec``, which are
@@ -521,17 +575,20 @@ def _next_elapse(properties: dict[str, str]) -> datetime | None:
     return utc_now() + timedelta(seconds=seconds_away)
 
 
-def _usec_to_datetime(value: str | None) -> datetime | None:
-    """Convert a systemd microseconds-since-epoch property to a datetime.
+def _usec_to_datetime(value: object) -> datetime | None:
+    """Convert a systemd microseconds-since-epoch value to a datetime.
 
-    systemd reports "no such time" as 0 or as the unsigned 64-bit maximum;
-    both mean "nothing scheduled".
+    "No such time" is reported as 0, as the unsigned 64-bit maximum, or as
+    the literal string ``infinity`` -- all of which mean nothing is
+    scheduled. Newer systemd also pretty-prints timestamps as dates, which
+    are locale-dependent and deliberately not parsed here; the JSON path
+    above supplies the numeric answer instead.
     """
-    if not value:
+    if value is None or value == "":
         return None
     try:
         microseconds = int(value)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
     if microseconds <= 0 or microseconds >= 2**64 - 1:
         return None

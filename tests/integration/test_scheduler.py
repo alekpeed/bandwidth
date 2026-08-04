@@ -41,7 +41,10 @@ class FakeSystemctl:
         self.active = False
         self.unit_file_enabled = False
         self.next_elapse_usec: int | None = None
-        self.next_elapse_monotonic_usec: int | None = None
+        self.next_elapse_monotonic_usec: str | int | None = None
+        #: What ``list-timers --json=short`` returns. None means the command
+        #: is unsupported, mirroring an older systemd.
+        self.list_timers_json: str | None = None
         self.available = True
 
     def install(self, monkeypatch) -> None:
@@ -64,6 +67,15 @@ class FakeSystemctl:
             if check:
                 raise SchedulerError("systemctl is not available on this system.")
             return None
+
+        if "list-timers" in arguments:
+            if self.list_timers_json is None:
+                return subprocess.CompletedProcess(
+                    args=list(arguments), returncode=1, stdout="", stderr="unknown option"
+                )
+            return subprocess.CompletedProcess(
+                args=list(arguments), returncode=0, stdout=self.list_timers_json, stderr=""
+            )
 
         if "is-system-running" in arguments:
             stdout = "running\n"
@@ -406,3 +418,97 @@ class TestNextRunFromAMonotonicTimer:
         systemctl.next_elapse_monotonic_usec = 0
 
         assert scheduler.status().next_run_utc is None
+
+
+class TestNextRunFromListTimers:
+    """Where the next run time actually comes from.
+
+    Observed on systemd 255, with the timer active and counting down
+    correctly::
+
+        ActiveState=active
+        NextElapseUSecMonotonic=infinity
+        LastTriggerUSec=Tue 2026-08-04 09:51:17 EDT
+
+    The monotonic property reads ``infinity`` for an OnUnitActiveSec timer,
+    and the timestamps are pretty-printed rather than raw microseconds --
+    while ``list-timers`` reported the next run correctly to the second. So
+    list-timers is asked first, and the show properties are only a fallback.
+    """
+
+    def _enable(self, database, systemctl):
+        from bandwidth_logger.storage.database import SETTING_AUTO_ENABLED
+
+        database.set_bool(SETTING_AUTO_ENABLED, True)
+        systemctl.active = True
+
+    def test_the_next_run_comes_from_list_timers(self, scheduler, systemctl, database):
+        import json
+
+        self._enable(database, systemctl)
+        moment = datetime.now(timezone.utc) + timedelta(minutes=5)
+        systemctl.list_timers_json = json.dumps(
+            [
+                {
+                    "unit": TIMER_UNIT,
+                    "next": int(moment.timestamp() * 1_000_000),
+                    "activates": SERVICE_UNIT,
+                }
+            ]
+        )
+        # The properties are useless, exactly as systemd 255 reports them.
+        systemctl.next_elapse_usec = 0
+        systemctl.next_elapse_monotonic_usec = "infinity"
+
+        status = scheduler.status()
+
+        assert status.next_run_utc is not None
+        assert abs((status.next_run_utc - moment).total_seconds()) < 2
+
+    def test_infinity_in_the_properties_does_not_crash_or_mislead(
+        self, scheduler, systemctl, database
+    ):
+        """``int("infinity")`` raises; it must be read as 'no time', not blow up."""
+        self._enable(database, systemctl)
+        systemctl.list_timers_json = "[]"
+        systemctl.next_elapse_monotonic_usec = "infinity"
+        systemctl.next_elapse_usec = 0
+
+        status = scheduler.status()
+
+        assert status.next_run_utc is None
+
+    def test_an_active_timer_with_no_readable_time_is_not_called_unscheduled(
+        self, scheduler, systemctl, database
+    ):
+        """The timer is running. Saying "Not scheduled" would be a falsehood."""
+        self._enable(database, systemctl)
+        systemctl.list_timers_json = "[]"
+        systemctl.next_elapse_monotonic_usec = "infinity"
+        systemctl.next_elapse_usec = 0
+
+        display = scheduler.status().next_run_display()
+
+        assert display == "Scheduled (next run time unavailable)"
+        assert "Not scheduled" not in display
+
+    def test_malformed_json_falls_back_rather_than_failing(self, scheduler, systemctl, database):
+        self._enable(database, systemctl)
+        systemctl.list_timers_json = "this is not json"
+        moment = datetime.now(timezone.utc) + timedelta(minutes=12)
+        systemctl.next_elapse_usec = int(moment.timestamp() * 1_000_000)
+
+        status = scheduler.status()
+
+        assert abs((status.next_run_utc - moment).total_seconds()) < 2
+
+    def test_an_older_systemd_without_json_still_works(self, scheduler, systemctl, database):
+        """list-timers --json fails; the show properties answer instead."""
+        self._enable(database, systemctl)
+        systemctl.list_timers_json = None  # command unsupported
+        moment = datetime.now(timezone.utc) + timedelta(minutes=8)
+        systemctl.next_elapse_usec = int(moment.timestamp() * 1_000_000)
+
+        status = scheduler.status()
+
+        assert abs((status.next_run_utc - moment).total_seconds()) < 2

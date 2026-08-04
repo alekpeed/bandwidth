@@ -1,5 +1,54 @@
 # Release notes
 
+## 1.5.0 — 4 August 2026
+
+Finishes the fix 1.4.0 got wrong.
+
+### The next run time now comes from list-timers
+
+1.4.0 assumed `systemctl show` would report the next firing in
+`NextElapseUSecMonotonic`. On systemd 255 it does not. With the timer active
+and firing on schedule, `show` reported:
+
+```
+ActiveState=active
+NextElapseUSecMonotonic=infinity
+LastTriggerUSec=Tue 2026-08-04 09:51:17 EDT
+```
+
+Three separate problems in four lines: the monotonic property reads
+`infinity` for an `OnUnitActiveSec` timer whose next firing is computed from
+the service's last activation; `NextElapseUSecRealtime` is absent entirely;
+and the timestamps are pretty-printed as locale-dependent dates rather than
+raw microseconds.
+
+Meanwhile `systemctl list-timers` reported the next run correctly to the
+second — because that is the code path systemd itself uses to answer this
+question. The application now asks it the same way, via `--json`, and keeps
+the `show` properties only as a fallback for older versions.
+
+### An active timer is never called "Not scheduled"
+
+Underneath the parsing bug was a worse habit: when the next run time could
+not be read, the window said **Not scheduled** — denying that any test was
+queued, while tests kept arriving on time.
+
+It now says **Scheduled (next run time unavailable)**, which is true. An
+unknown detail is not the same as an absent schedule, and the whole reason
+this application uses systemd is to report what is really happening rather
+than what it assumes.
+
+Non-numeric time values like `infinity` are also read as "no time" rather
+than failing to parse.
+
+### Test suite
+
+The cross-process lock test could fail under load: it held the lock for two
+seconds, and a fresh Python interpreter plus package import sometimes took
+longer than that before the probe could look. Widened, and confirmed stable.
+
+---
+
 ## 1.4.0 — 4 August 2026
 
 Two bugs found by watching someone use the application.
