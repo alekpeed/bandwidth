@@ -1,0 +1,14 @@
+bandwidth-logger (1.0.0-1) noble; urgency=medium
+
+  * First release.
+  * Manual and scheduled internet speed tests with a complete local history.
+  * Every attempted test is recorded, including failures, timeouts and
+    attempts skipped because another test was still running.
+  * Background scheduling through a systemd user timer, so testing continues
+    with the window closed and resumes after login.
+  * Full and date-range CSV export, with the external IP address excluded by
+    default.
+  * Ookla Speedtest CLI is used when installed; the open-source speedtest-cli
+    is a package dependency so the application works on first launch.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 09:00:00 +0000

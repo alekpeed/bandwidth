@@ -1,0 +1,63 @@
+.TH BANDWIDTH\-LOGGER\-RUN 1 "2026-08-04" "bandwidth-logger 1.0.0" "User Commands"
+.SH NAME
+bandwidth\-logger\-run \- run one speed test and record it, without a window
+.SH SYNOPSIS
+.B bandwidth\-logger\-run
+.RB [ \-\-scheduled | \-\-now | \-\-status | \-\-export
+.IR PATH ]
+.RI [ options ]
+.SH DESCRIPTION
+.B bandwidth\-logger\-run
+performs a single speed test and stores the result, with no graphical
+interface. It is what the background timer runs, and it is also useful for
+inspecting the application from a terminal.
+.PP
+It performs no scheduling of its own. Each invocation runs at most one test
+and exits.
+.PP
+Ordinary use of Bandwidth Logger does not require this command. See
+.BR bandwidth-logger (1).
+.SH OPTIONS
+.TP
+.B \-\-scheduled
+Run one test recorded as a scheduled test. Before running, a long gap since
+the previous attempt is noted as an interruption. This is the mode the
+systemd user timer uses.
+.TP
+.B \-\-now
+Run one test recorded as a manual test, and print the stored record.
+.TP
+.B \-\-status
+Print the scheduler state, which engines are installed, and the most recent
+record. Runs no test.
+.TP
+.BI \-\-export " PATH"
+Export the full history to
+.I PATH
+as CSV and print the number of rows written. Runs no test and does not alter
+the database.
+.TP
+.B \-\-json
+Print machine-readable output instead of a summary.
+.TP
+.B \-\-include\-external\-ip
+Include the external IP address column when exporting. Excluded by default.
+.TP
+.B \-\-verbose
+Log at debug level.
+.TP
+.B \-\-version
+Print the version and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+The attempt was recorded. This includes a test that
+.B failed \-
+a failed test is a normal recorded outcome, so one bad test can never mark
+the timer's unit failed and stop future runs.
+.TP
+.B 2
+The application itself failed, above all a database that could not be
+written. The history is incomplete and the problem needs attention.
+.SH SEE ALSO
+.BR bandwidth-logger (1)

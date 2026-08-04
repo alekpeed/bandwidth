@@ -1,0 +1,28 @@
+#!/usr/bin/make -f
+# Build with pybuild against the pyproject.toml at the top of the tree.
+
+export PYBUILD_NAME = bandwidth-logger
+export PYBUILD_SYSTEM = pyproject
+
+# The test suite is run separately by packaging/run-tests.sh, against the
+# source tree and with a fake engine. Running it here as well would need
+# pytest at build time for no extra confidence.
+export PYBUILD_DISABLE = test
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_installsystemduser:
+	# Deliberately empty. The timer is a *user* unit whose interval is chosen
+	# at runtime, so the application writes it to ~/.config/systemd/user
+	# itself. Installing a system-wide copy here would create a second,
+	# stale definition. See data/systemd/README.md.
+
+override_dh_auto_install:
+	dh_auto_install
+	# Ship the reference unit files as documentation only.
+	install -d debian/bandwidth-logger/usr/share/doc/bandwidth-logger/systemd
+	install -m 0644 data/systemd/bandwidth-logger-test.service \
+		data/systemd/bandwidth-logger-test.timer \
+		data/systemd/README.md \
+		debian/bandwidth-logger/usr/share/doc/bandwidth-logger/systemd/

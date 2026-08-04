@@ -1,0 +1,16 @@
+[Unit]
+Description=Bandwidth Logger automatic speed test every 30 minutes
+
+[Timer]
+Unit=bandwidth-logger-test.service
+# First run one interval after the timer starts, then one interval after
+# each completed run.
+OnActiveSec=30min
+OnUnitActiveSec=30min
+AccuracySec=30s
+# Never replay missed runs: a machine that was asleep resumes with a single
+# test on the normal schedule instead of a burst of catch-up tests.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
