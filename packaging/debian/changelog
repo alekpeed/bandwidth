@@ -1,3 +1,15 @@
+bandwidth-logger (1.3.0-1) noble; urgency=medium
+
+  * Add Delete selected. Rows in the table can now be multi-selected and
+    deleted individually, with the same confirmation stating the count and
+    the dates covered. Deleting a range could not remove one bad reading
+    without taking its neighbours.
+  * Say something when Apply is pressed with automatic testing switched off.
+    It saved the interval and scheduled nothing, in silence, which was
+    indistinguishable from having started the schedule.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 15:00:00 +0000
+
 bandwidth-logger (1.2.0-1) noble; urgency=medium
 
   * Add a Test server setting. The engine chooses a server by lowest latency,

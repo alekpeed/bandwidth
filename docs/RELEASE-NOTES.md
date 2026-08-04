@@ -1,5 +1,39 @@
 # Release notes
 
+## 1.3.0 — 4 August 2026
+
+Two things found by using the application.
+
+### Delete selected records
+
+Rows can now be multi-selected — click, Ctrl-click, Shift-click — and deleted
+on their own, through **Delete selected** beside the existing Delete records.
+The confirmation states the count and the dates covered, as range deletion
+already did.
+
+Previously the only options were everything or a date range, so removing a
+single misleading reading meant taking its neighbours with it. That came up
+immediately: after pinning a test server, the handful of earlier results were
+worth discarding and the rest were not.
+
+Selecting a row and opening its details are still separate gestures — a
+double-click or Enter opens the record, clicking selects it.
+
+### Applying an interval now says what happened
+
+Pressing **Apply** while **Automatic testing** was switched off saved the
+interval and scheduled nothing, without a word. The interval control and the
+switch sit side by side, so "I set it to 5 minutes and pressed Apply" is a
+reasonable thing to believe was enough — and the silence confirmed it.
+
+Apply now explains that the interval was saved, that nothing is scheduled
+because automatic testing is off, and that the switch is what starts it.
+
+Toggling the switch off deliberately still says nothing extra; that action is
+unambiguous on its own.
+
+---
+
 ## 1.2.0 — 4 August 2026
 
 Adds a **Test server** setting, because leaving the choice to the engine was

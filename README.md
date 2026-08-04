@@ -32,7 +32,7 @@ history of readings, with the failures included, proves something.
 
 Requires Ubuntu 24.04 LTS or later, on x86-64.
 
-**Download `bandwidth-logger_1.2.0-1_all.deb` and double-click it.** Your
+**Download `bandwidth-logger_1.3.0-1_all.deb` and double-click it.** Your
 software installer opens, you press Install, and that is the whole procedure.
 
 Then launch **Bandwidth Logger** from the application menu — press the Super
@@ -45,7 +45,7 @@ Nothing after this point needs a terminal.
 
 ```bash
 cd ~/Downloads
-sudo apt install ./bandwidth-logger_1.2.0-1_all.deb
+sudo apt install ./bandwidth-logger_1.3.0-1_all.deb
 ```
 
 The leading `./` is required; without it `apt` looks for a package of that
@@ -56,7 +56,7 @@ If `apt` reports `Unsupported file ... given on commandline`, it has not
 recognised the file as a Debian archive. Check the download with:
 
 ```bash
-file ~/Downloads/bandwidth-logger_1.2.0-1_all.deb
+file ~/Downloads/bandwidth-logger_1.3.0-1_all.deb
 ```
 
 A good copy reports `Debian binary package (format 2.0)`. Anything else means
@@ -194,9 +194,19 @@ button — never during a scheduled test.
 
 ### Deleting
 
-**Delete records** asks you to confirm, showing how many records will go and
-the dates they span. Nothing is ever deleted automatically and there is no
-retention limit.
+**Delete selected** removes just the rows you have highlighted. Click to
+select, Ctrl-click to add, Shift-click for a run of them. Double-click or
+Enter still opens a record's details rather than selecting it.
+
+**Delete records** removes everything, or a date range.
+
+Both confirm first, showing how many records will go and the dates they span.
+Nothing is ever deleted automatically and there is no retention limit.
+
+**Switching on automatic testing is the switch, not the Apply button.** Apply
+saves the interval; the **Automatic testing** switch starts the schedule. If
+you press Apply with the switch off, the application now tells you that
+nothing was scheduled.
 
 ---
 
@@ -274,7 +284,7 @@ speedtest-cli but it is not installed`, because installing Ookla's engine
 removed the package 1.0.0 depended on. Recover with:
 
 ```bash
-sudo dpkg -i bandwidth-logger_1.2.0-1_all.deb
+sudo dpkg -i bandwidth-logger_1.3.0-1_all.deb
 sudo apt-get -f install
 ```
 

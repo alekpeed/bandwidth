@@ -109,6 +109,17 @@ def on_activate(app):
     assert window.store.get_n_items() == 2
     built.append("reorder")
 
+    # Multi-select drives the Delete selected button.
+    assert not window.delete_selected_button.get_sensitive()
+    window.selection.select_item(0, False)
+    assert window.delete_selected_button.get_sensitive()
+    assert len(window._selected_run_ids()) == 1
+    window.selection.select_all()
+    assert len(window._selected_run_ids()) == 2
+    window.selection.unselect_all()
+    assert not window.delete_selected_button.get_sensitive()
+    built.append("multi-select")
+
     app.quit()
 
 application.connect("activate", on_activate)
@@ -162,6 +173,7 @@ def test_the_whole_interface_builds_without_error(tmp_path, isolated_home):
         "delete dialog",
         "refresh",
         "reorder",
+        "multi-select",
     ):
         assert part in built[0], f"{part} was not reached: {built[0]}"
 

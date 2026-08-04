@@ -302,15 +302,19 @@ class MainWindow(Gtk.ApplicationWindow):
         container.append(controls)
 
         self.store = Gio.ListStore.new(RunObject)
-        self.selection = Gtk.SingleSelection.new(self.store)
-        self.selection.set_autoselect(False)
-        self.selection.set_can_unselect(True)
+        # Multiple selection so several rows can be deleted at once. Opening
+        # the details of one row still works: activating a row (double-click
+        # or Enter) is a separate gesture from selecting it.
+        self.selection = Gtk.MultiSelection.new(self.store)
 
         self.column_view = Gtk.ColumnView.new(self.selection)
         self.column_view.set_show_row_separators(True)
         self.column_view.set_show_column_separators(True)
         self.column_view.set_vexpand(True)
         self.column_view.connect("activate", self._on_row_activated)
+        self.selection.connect(
+            "selection-changed", lambda *_: self._update_delete_selected_state()
+        )
 
         for title, accessor, width, numeric in _TABLE_COLUMNS:
             self.column_view.append_column(_build_column(title, accessor, width, numeric))
@@ -353,8 +357,20 @@ class MainWindow(Gtk.ApplicationWindow):
         open_folder.connect("clicked", self._on_open_data_folder)
         box.append(open_folder)
 
+        self.delete_selected_button = Gtk.Button(
+            label="Delete se_lected", use_underline=True
+        )
+        self.delete_selected_button.add_css_class("destructive-action")
+        self.delete_selected_button.set_tooltip_text(
+            "Delete only the rows selected in the table"
+        )
+        self.delete_selected_button.set_sensitive(False)
+        self.delete_selected_button.connect("clicked", self._on_delete_selected)
+        box.append(self.delete_selected_button)
+
         delete = Gtk.Button(label="_Delete records", use_underline=True)
         delete.add_css_class("destructive-action")
+        delete.set_tooltip_text("Delete all records, or a date range")
         delete.connect("clicked", self._on_delete_records)
         box.append(delete)
 
@@ -425,7 +441,7 @@ class MainWindow(Gtk.ApplicationWindow):
             self._show_banner(f"Cannot read the record database: {exc}", "details")
             return
 
-        selected_id = self._selected_run_id()
+        selected_ids = self._selected_run_ids()
 
         self.store.remove_all()
         for run in runs:
@@ -436,11 +452,8 @@ class MainWindow(Gtk.ApplicationWindow):
             "No tests recorded yet" if total == 0 else f"{total:,} record{'s' if total != 1 else ''}"
         )
 
-        if selected_id is not None:
-            for index in range(self.store.get_n_items()):
-                if self.store.get_item(index).run.id == selected_id:
-                    self.selection.set_selected(index)
-                    break
+        self._restore_selection(selected_ids)
+        self._update_delete_selected_state()
 
     def refresh_status(self) -> None:
         try:
@@ -523,9 +536,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.custom_box.set_visible(dropdown.get_selected() >= len(INTERVAL_PRESETS))
 
     def _on_apply_interval(self, _button: Gtk.Button) -> None:
-        self._apply_schedule(enabled=self.auto_switch.get_active())
+        self._apply_schedule(enabled=self.auto_switch.get_active(), from_apply_button=True)
 
-    def _apply_schedule(self, *, enabled: bool) -> None:
+    def _apply_schedule(self, *, enabled: bool, from_apply_button: bool = False) -> None:
         """Push the current controls into the real timer.
 
         The interval always takes effect from now, which is what restarting
@@ -562,6 +575,17 @@ class MainWindow(Gtk.ApplicationWindow):
             self._toast(
                 f"Automatic testing is on, one test every {describe_interval(minutes)}. "
                 f"Next test: {status.next_run_display()}."
+            )
+        elif from_apply_button and not enabled:
+            # Applying an interval while the switch is off saves the setting
+            # and schedules nothing. Silence here reads as "done", so say what
+            # actually happened and what is still needed.
+            self._show_message(
+                "Interval saved, but automatic testing is off",
+                f"The interval is now one test every {describe_interval(minutes)}.\n\n"
+                "Automatic testing is switched off, so no tests are scheduled and "
+                "nothing will run on its own. Switch Automatic testing on to start "
+                "the schedule.",
             )
         self.refresh_status()
 
@@ -646,13 +670,29 @@ class MainWindow(Gtk.ApplicationWindow):
     # Table interaction
     # ------------------------------------------------------------------
 
-    def _selected_run(self) -> TestRun | None:
-        item = self.selection.get_selected_item()
-        return item.run if item is not None else None
+    def _selected_runs(self) -> list[TestRun]:
+        """Every row currently selected, in table order."""
+        selected: list[TestRun] = []
+        bitset = self.selection.get_selection()
+        for index in range(self.store.get_n_items()):
+            if bitset.contains(index):
+                item = self.store.get_item(index)
+                if item is not None:
+                    selected.append(item.run)
+        return selected
 
-    def _selected_run_id(self) -> int | None:
-        run = self._selected_run()
-        return run.id if run is not None else None
+    def _selected_run_ids(self) -> list[int]:
+        return [run.id for run in self._selected_runs() if run.id is not None]
+
+    def _restore_selection(self, run_ids: list[int]) -> None:
+        """Re-select the same records after the table is rebuilt."""
+        if not run_ids:
+            return
+        wanted = set(run_ids)
+        for index in range(self.store.get_n_items()):
+            item = self.store.get_item(index)
+            if item is not None and item.run.id in wanted:
+                self.selection.select_item(index, False)
 
     def _on_row_activated(self, _view: Gtk.ColumnView, position: int) -> None:
         item = self.store.get_item(position)
@@ -687,8 +727,72 @@ class MainWindow(Gtk.ApplicationWindow):
                     f"The data folder is at:\n\n{paths.data_dir()}\n\n{error.message}",
                 )
 
+    def _update_delete_selected_state(self) -> None:
+        count = len(self._selected_run_ids())
+        button = getattr(self, "delete_selected_button", None)
+        if button is None:
+            return
+        button.set_sensitive(count > 0)
+        button.set_label(
+            "Delete se_lected" if count == 0 else f"Delete se_lected ({count})"
+        )
+
     def _on_delete_records(self, _button: Gtk.Button) -> None:
         DeleteDialog(self, self.database, on_deleted=self.refresh_all).present()
+
+    def _on_delete_selected(self, _button: Gtk.Button) -> None:
+        """Delete exactly the rows the user picked.
+
+        Same confirmation discipline as deleting a range: the count and the
+        span are stated before anything goes, because this is the one action
+        here that destroys history.
+        """
+        runs = self._selected_runs()
+        if not runs:
+            return
+
+        self._pending_selected_ids = [run.id for run in runs if run.id is not None]
+        count = len(self._pending_selected_ids)
+        span = _describe_span(
+            min(run.started_at_utc for run in runs),
+            max(run.started_at_utc for run in runs),
+        )
+
+        confirm = Gtk.AlertDialog()
+        confirm.set_modal(True)
+        confirm.set_message(f"Delete {count:,} selected record{'s' if count != 1 else ''}?")
+        confirm.set_detail(
+            f"This will permanently delete the {count:,} record"
+            f"{'s' if count != 1 else ''} you selected, covering {span}.\n\n"
+            "This cannot be undone. Other records are not affected."
+        )
+        confirm.set_buttons(["Cancel", f"Delete {count:,}"])
+        confirm.set_cancel_button(0)
+        confirm.set_default_button(0)
+        confirm.choose(self, None, self._on_delete_selected_confirmed)
+
+    def _on_delete_selected_confirmed(
+        self, dialog: Gtk.AlertDialog, result: Gio.AsyncResult
+    ) -> None:
+        try:
+            choice = dialog.choose_finish(result)
+        except GLib.Error:
+            return
+        if choice != 1:
+            return
+
+        try:
+            removed = self.database.delete_runs_by_id(self._pending_selected_ids)
+        except DatabaseError as exc:
+            self._show_message(
+                "Records could not be deleted",
+                f"Nothing was deleted.\n\n{exc}",
+            )
+            return
+
+        self.selection.unselect_all()
+        self.refresh_all()
+        self._toast(f"{removed:,} record{'s' if removed != 1 else ''} deleted.")
 
     def _open_settings(self) -> None:
         SettingsDialog(self, self.database, on_saved=self._on_settings_saved).present()

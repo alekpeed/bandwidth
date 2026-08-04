@@ -314,3 +314,60 @@ class TestDatabasePersistence:
 
         assert [run.isp_name for run in newest] == ["h0", "h1", "h2", "h3"]
         assert [run.isp_name for run in oldest] == ["h3", "h2", "h1", "h0"]
+
+
+class TestDeletingSelectedRecords:
+    """Deleting specific rows, added in 1.3.0.
+
+    Range deletion could not remove a single bad reading without taking its
+    neighbours, which made it awkward to drop a handful of results measured
+    before a test server was pinned.
+    """
+
+    def test_only_the_named_records_are_removed(self, database):
+        from datetime import timedelta
+
+        from bandwidth_logger.core.models import utc_now
+
+        now = utc_now()
+        runs = [
+            database.insert_run(make_run(moment=now - timedelta(minutes=index), isp_name=f"P{index}"))
+            for index in range(5)
+        ]
+
+        removed = database.delete_runs_by_id([runs[1], runs[3]])
+
+        assert removed == 2
+        assert database.count_runs() == 3
+        assert {run.id for run in database.list_runs()} == {runs[0], runs[2], runs[4]}
+
+    def test_deleting_nothing_removes_nothing(self, database):
+        database.insert_run(make_run())
+        assert database.delete_runs_by_id([]) == 0
+        assert database.count_runs() == 1
+
+    def test_unknown_ids_are_ignored_rather_than_failing(self, database):
+        kept = database.insert_run(make_run())
+        assert database.delete_runs_by_id([kept + 999]) == 0
+        assert database.count_runs() == 1
+
+    def test_duplicate_ids_are_counted_once(self, database):
+        run_id = database.insert_run(make_run())
+        assert database.delete_runs_by_id([run_id, run_id, run_id]) == 1
+        assert database.count_runs() == 0
+
+    def test_a_large_selection_is_chunked_safely(self, database):
+        """More ids than SQLite's default variable limit would allow in one
+        statement, so the delete is issued in chunks.
+        """
+        ids = [database.insert_run(make_run()) for _ in range(1200)]
+        assert database.delete_runs_by_id(ids) == 1200
+        assert database.count_runs() == 0
+
+    def test_the_records_to_be_deleted_can_be_fetched_first(self, database):
+        """The confirmation states the count and span, so it reads them."""
+        first = database.insert_run(make_run(isp_name="First"))
+        database.insert_run(make_run(isp_name="Second"))
+
+        fetched = database.runs_by_id([first])
+        assert [run.isp_name for run in fetched] == ["First"]

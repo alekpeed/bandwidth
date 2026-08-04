@@ -302,6 +302,43 @@ class Database:
         log.info("Deleted %d run(s)", removed)
         return int(removed)
 
+    def delete_runs_by_id(self, run_ids: "list[int]") -> int:
+        """Delete exactly the given runs and return how many were removed.
+
+        Only ever called from an explicit confirmation in the interface, the
+        same as range deletion. Ids are bound as parameters, never
+        interpolated, and are chunked so a very large selection cannot exceed
+        SQLite's variable limit.
+        """
+        unique = sorted({int(run_id) for run_id in run_ids})
+        if not unique:
+            return 0
+
+        removed = 0
+        chunk_size = 500
+        with self.transaction() as connection:
+            for start in range(0, len(unique), chunk_size):
+                chunk = unique[start : start + chunk_size]
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = connection.execute(
+                    f"DELETE FROM test_runs WHERE id IN ({placeholders})", chunk
+                )
+                removed += cursor.rowcount
+        log.info("Deleted %d selected run(s)", removed)
+        return int(removed)
+
+    def runs_by_id(self, run_ids: "list[int]") -> "list[TestRun]":
+        """Fetch specific runs, for showing what a deletion will remove."""
+        unique = sorted({int(run_id) for run_id in run_ids})
+        if not unique:
+            return []
+        placeholders = ", ".join("?" for _ in unique)
+        rows = self.connect().execute(
+            f"SELECT * FROM test_runs WHERE id IN ({placeholders}) ORDER BY started_at_utc",
+            unique,
+        ).fetchall()
+        return [TestRun.from_row(row) for row in rows]
+
     @staticmethod
     def _range_clauses(start_utc: str | None, end_utc: str | None) -> tuple[list[str], list[Any]]:
         clauses: list[str] = []

@@ -70,3 +70,48 @@ class TestDescription:
     )
     def test_intervals_are_described_in_plain_words(self, minutes, expected):
         assert describe_interval(minutes) == expected
+
+
+class TestApplyWithoutEnabling:
+    """Pressing Apply while automatic testing is off.
+
+    Reported in use: the interval was set to 5 minutes and Apply pressed, and
+    nothing ran. The setting had saved correctly -- the switch was simply off
+    -- but the interface said nothing either way, so "saved" was
+    indistinguishable from "scheduled".
+    """
+
+    def test_the_apply_handler_explains_when_nothing_was_scheduled(self):
+        """Checked against the source so it runs without GTK installed."""
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "src/bandwidth_logger/ui/main_window.py"
+        ).read_text(encoding="utf-8")
+
+        body = source.split("def _apply_schedule")[1].split("\n    def ")[0]
+
+        assert "from_apply_button and not enabled" in body, (
+            "applying an interval with the switch off must be acknowledged"
+        )
+        assert "Interval saved, but automatic testing is off" in body
+        assert "Switch Automatic testing on" in body, (
+            "the message must say what the user needs to do next"
+        )
+
+    def test_toggling_the_switch_off_does_not_show_the_message(self):
+        """The message belongs to the Apply button only.
+
+        Switching automatic testing off is unambiguous on its own; an
+        explanation there would just be noise.
+        """
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "src/bandwidth_logger/ui/main_window.py"
+        ).read_text(encoding="utf-8")
+
+        handler = source.split("def _on_auto_switch")[1].split("\n    def ")[0]
+        assert "from_apply_button" not in handler
