@@ -1,3 +1,19 @@
+bandwidth-logger (1.2.0-1) noble; urgency=medium
+
+  * Add a Test server setting. The engine chooses a server by lowest latency,
+    which is not the same as fastest: measured on one gigabit line, the
+    lowest-latency server returned 696 Mbps while another 0.5 ms further away
+    returned 926. Left automatic the engine may also choose differently
+    between runs, so a change in a recorded speed could mean only that a
+    different server answered -- which defeats the purpose of keeping a
+    history.
+  * Settings can now fetch the list of nearby servers and pin one. Fetching
+    contacts Ookla, so it happens only when asked and never during a
+    scheduled test.
+  * A pinned server id is validated as numeric before use.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 14:00:00 +0000
+
 bandwidth-logger (1.1.0-1) noble; urgency=medium
 
   * Remove the speedtest-cli fallback engine. It under-reported throughput

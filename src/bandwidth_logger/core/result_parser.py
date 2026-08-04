@@ -150,3 +150,47 @@ def parse_ookla_json(stdout: str, *, engine_version: str | None = None) -> Engin
         interface_name=coerce_str(dig(payload, "interface", "name")),
         raw_result_json=json.dumps(payload, sort_keys=True),
     )
+
+
+# --------------------------------------------------------------------------
+# Server list
+# --------------------------------------------------------------------------
+
+
+def parse_server_list(stdout: str) -> list[dict[str, str]]:
+    """Parse ``speedtest --servers --format=json`` into plain dictionaries.
+
+    Only the fields the interface shows are kept. A malformed entry is
+    skipped rather than failing the whole list, since a partly usable list is
+    more useful than none.
+    """
+    payload = load_json(stdout)
+    entries = payload.get("servers")
+    if not isinstance(entries, list):
+        raise ParseError("The engine did not return a list of servers.")
+
+    servers: list[dict[str, str]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        identifier = coerce_str(entry.get("id"))
+        if not identifier or not identifier.isdigit():
+            continue
+        servers.append(
+            {
+                "id": identifier,
+                "name": coerce_str(entry.get("name")) or "Unnamed server",
+                "location": coerce_str(entry.get("location")) or "",
+                "country": coerce_str(entry.get("country")) or "",
+            }
+        )
+    return servers
+
+
+def describe_server(server: dict[str, str]) -> str:
+    """One line for the server picker, e.g. ``Spectrum - New York, NY (16976)``."""
+    where = server.get("location") or server.get("country") or ""
+    label = f"{server['name']}"
+    if where:
+        label += f" - {where}"
+    return f"{label} ({server['id']})"

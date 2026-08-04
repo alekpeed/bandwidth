@@ -2,7 +2,7 @@
 
 APPLICATION_ID = "org.bandwidthlogger.BandwidthLogger"
 APPLICATION_NAME = "Bandwidth Logger"
-APPLICATION_VERSION = "1.1.0"
+APPLICATION_VERSION = "1.2.0"
 
 __version__ = APPLICATION_VERSION
 

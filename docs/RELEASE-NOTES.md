@@ -1,5 +1,63 @@
 # Release notes
 
+## 1.2.0 — 4 August 2026
+
+Adds a **Test server** setting, because leaving the choice to the engine was
+corrupting the very thing this application exists to produce: a history you
+can compare across time.
+
+### Why
+
+Measured on one gigabit connection, minutes apart, over Ethernet:
+
+| Server | Ping | Download |
+|---|---|---|
+| Pilot Fiber | **9.8 ms** (lowest) | **696 Mbps** (slowest) |
+| Uniti | 10.0 ms | 811 Mbps |
+| Starry | 10.2 ms | 869 Mbps |
+| Spectrum | 10.3 ms | **926 Mbps** |
+| Optimum | 34.1 ms | 773 Mbps |
+
+The engine picks by **lowest latency**. On that line the lowest-latency
+server was the slowest, and the 0.5 ms that separated it from the fastest is
+noise — but it cost 230 Mbps, a 33% error.
+
+Worse than the size of the error is its nature. The engine re-picks on every
+run, so an unpinned history records *server changes as if they were
+connection changes*. A dip in the graph could mean the connection degraded,
+or merely that a different server answered. There is no way to tell them
+apart after the fact, which makes the history unfit for the diagnosis it was
+collected for.
+
+### What changed
+
+* **Settings → Test server.** Automatic, or pinned to one you choose.
+* **Find nearby servers** fetches the list on demand. It contacts Ookla, so
+  it happens only when you ask and never during a scheduled test.
+* A pinned id is validated as numeric before it reaches the engine.
+* A pin that is no longer in the fetched list is kept rather than silently
+  dropped, so saving cannot quietly revert your choice.
+
+### Choosing one
+
+The fastest server is often not the closest, so measure rather than guess:
+
+```bash
+speedtest --servers | head -12
+speedtest --server-id=NUMBER
+```
+
+Run each candidate once, pin the quickest, and leave it pinned. From then on
+a change in your recorded speed means your connection changed.
+
+### Existing records
+
+Untouched. Every row already stored the server that answered it, so a
+history that spans this change can be read correctly — check the Server
+column to see where the engine was still choosing for itself.
+
+---
+
 ## 1.1.0 — 4 August 2026
 
 A correctness release. One change, for one reason: **the fallback speed-test
@@ -142,10 +200,10 @@ until it is present. On Ubuntu 24.04 the install needs two non-obvious
 workarounds, both documented in the README and built into the setup screen.
 
 **The engine's numbers are the engine's numbers.** A speed test measures the
-path to one server at one moment. The engine picks the server itself and this
-release does not let you pin one, so a change in chosen server can shift
-results independently of your connection. The server is recorded on every row
-so you can see when that happened.
+path to one server at one moment. Since 1.2.0 you can pin that server, and
+you should — until you do, the engine re-picks by latency on every run and
+results can shift independently of your connection. The server is recorded on
+every row either way.
 
 **Interface and connection type are best-effort.** Read from `/proc/net/route`
 and `/sys/class/net`. On unusual setups — some VPNs, bridges, containers —

@@ -37,6 +37,7 @@ SETTING_EXPORT_INCLUDE_IP = "export_include_external_ip"
 SETTING_SORT_NEWEST_FIRST = "table_sort_newest_first"
 SETTING_TIMEOUT_SECONDS = "engine_timeout_seconds"
 SETTING_ENGINE_NAME = "preferred_engine"
+SETTING_SERVER_ID = "preferred_server_id"
 SETTING_CLOSE_NOTICE_SHOWN = "close_behaviour_notice_shown"
 
 DEFAULT_SETTINGS: dict[str, str] = {
@@ -47,6 +48,8 @@ DEFAULT_SETTINGS: dict[str, str] = {
     SETTING_SORT_NEWEST_FIRST: "true",
     SETTING_TIMEOUT_SECONDS: "180",
     SETTING_ENGINE_NAME: "auto",
+    # Empty means "let the engine choose". See docs/ARCHITECTURE.md.
+    SETTING_SERVER_ID: "",
     SETTING_CLOSE_NOTICE_SHOWN: "false",
 }
 

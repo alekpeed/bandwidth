@@ -22,7 +22,7 @@ import re
 import subprocess
 
 from ..core.models import EngineMeasurement, ErrorCategory
-from ..core.result_parser import ParseError, parse_ookla_json
+from ..core.result_parser import ParseError, parse_ookla_json, parse_server_list
 from .base import EngineError, InstallGuidance, SpeedTestEngine
 
 _VERSION_PATTERN = re.compile(r"(\d+\.\d+(?:\.\d+)*)")
@@ -101,13 +101,56 @@ class OoklaEngine(SpeedTestEngine):
                 ErrorCategory.ENGINE_MISSING,
                 "The Ookla Speedtest CLI ('speedtest') was not found on PATH.",
             )
-        return [
+        command = [
             path,
             "--format=json",
             "--accept-license",
             "--accept-gdpr",
             "--progress=no",
         ]
+        if self.server_id:
+            # Validated rather than trusted. The value reaches here from a
+            # stored setting, and although the command is an argument vector
+            # that is never shell-interpreted, a non-numeric id would only
+            # produce a confusing engine error later.
+            if not str(self.server_id).isdigit():
+                raise EngineError(
+                    ErrorCategory.PROCESS_ERROR,
+                    f"The saved test server id {self.server_id!r} is not a number.",
+                )
+            command.append(f"--server-id={self.server_id}")
+        return command
+
+    def list_servers(self, *, timeout: int = 30) -> list[dict[str, str]]:
+        """Nearby test servers, as ``{id, name, location, country}``.
+
+        Contacts Ookla to fetch the list, so it is called only when the user
+        asks for it in Settings -- never during a scheduled test.
+        """
+        path = self.executable_path()
+        if path is None:
+            raise EngineError(
+                ErrorCategory.ENGINE_MISSING,
+                "The Ookla Speedtest CLI ('speedtest') was not found on PATH.",
+            )
+        try:
+            completed = subprocess.run(  # noqa: S603 - fixed argv
+                [path, "--servers", "--format=json", "--accept-license", "--accept-gdpr"],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise EngineError(ErrorCategory.PROCESS_ERROR, f"Could not list servers: {exc}") from exc
+
+        if completed.returncode != 0:
+            category, message = self.classify_failure(
+                completed.returncode, completed.stdout, completed.stderr
+            )
+            raise EngineError(category, message)
+
+        return parse_server_list(completed.stdout)
 
     def parse_output(self, stdout: str) -> EngineMeasurement:
         try:

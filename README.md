@@ -32,7 +32,7 @@ history of readings, with the failures included, proves something.
 
 Requires Ubuntu 24.04 LTS or later, on x86-64.
 
-**Download `bandwidth-logger_1.1.0-1_all.deb` and double-click it.** Your
+**Download `bandwidth-logger_1.2.0-1_all.deb` and double-click it.** Your
 software installer opens, you press Install, and that is the whole procedure.
 
 Then launch **Bandwidth Logger** from the application menu — press the Super
@@ -45,7 +45,7 @@ Nothing after this point needs a terminal.
 
 ```bash
 cd ~/Downloads
-sudo apt install ./bandwidth-logger_1.1.0-1_all.deb
+sudo apt install ./bandwidth-logger_1.2.0-1_all.deb
 ```
 
 The leading `./` is required; without it `apt` looks for a package of that
@@ -56,7 +56,7 @@ If `apt` reports `Unsupported file ... given on commandline`, it has not
 recognised the file as a Debian archive. Check the download with:
 
 ```bash
-file ~/Downloads/bandwidth-logger_1.1.0-1_all.deb
+file ~/Downloads/bandwidth-logger_1.2.0-1_all.deb
 ```
 
 A good copy reports `Debian binary package (format 2.0)`. Anything else means
@@ -163,6 +163,35 @@ a zero.
 Your external IP address is stored with each record but is **excluded from
 exports by default**. Tick the box in the export dialog to include it.
 
+### Choosing a test server
+
+**Settings → Test server** decides which server your results are measured
+against. This matters more than it sounds.
+
+The engine picks by **lowest latency**, which is not the same as fastest. On
+one gigabit line the lowest-latency server returned 696 Mbps and another
+0.5 ms further away returned 926 — a 33% difference from a latency gap that
+is pure noise.
+
+Left automatic, the engine also re-picks on every run, so a dip in your
+history might mean your connection degraded, or might mean a different server
+answered. You cannot tell those apart afterwards, which is exactly the
+question the history exists to answer.
+
+Press **Find nearby servers**, then measure the candidates rather than
+guessing:
+
+```bash
+speedtest --servers | head -12
+speedtest --server-id=NUMBER
+```
+
+Pin the quickest and leave it. From then on, a change in your recorded speed
+means your connection changed.
+
+Fetching the list contacts Ookla, so it happens only when you press the
+button — never during a scheduled test.
+
 ### Deleting
 
 **Delete records** asks you to confirm, showing how many records will go and
@@ -245,7 +274,7 @@ speedtest-cli but it is not installed`, because installing Ookla's engine
 removed the package 1.0.0 depended on. Recover with:
 
 ```bash
-sudo dpkg -i bandwidth-logger_1.1.0-1_all.deb
+sudo dpkg -i bandwidth-logger_1.2.0-1_all.deb
 sudo apt-get -f install
 ```
 

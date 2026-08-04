@@ -7,21 +7,25 @@ main window, because it is an internal safeguard and not a normal control.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 
-from gi.repository import Gdk, Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
+from ..core.result_parser import describe_server  # noqa: E402
 from ..core.test_runner import DEFAULT_TIMEOUT_SECONDS  # noqa: E402
 from ..engines import known_engines  # noqa: E402
-from ..engines.registry import AUTOMATIC  # noqa: E402
+from ..engines.base import EngineError  # noqa: E402
+from ..engines.registry import AUTOMATIC, select_engine  # noqa: E402
 from ..storage.database import (  # noqa: E402
     SETTING_ENGINE_NAME,
     SETTING_EXPORT_INCLUDE_IP,
     SETTING_RUN_AFTER_LOGIN,
+    SETTING_SERVER_ID,
     SETTING_TIMEOUT_SECONDS,
     Database,
 )
@@ -99,6 +103,7 @@ class SettingsDialog(Gtk.Window):
         scroller.set_child(content)
 
         content.append(self._build_engine_section())
+        content.append(self._build_server_section())
         content.append(self._build_startup_section())
         content.append(self._build_privacy_section())
         content.append(self._build_storage_section())
@@ -158,6 +163,121 @@ class SettingsDialog(Gtk.Window):
         )
         box.append(help_button)
         return box
+
+    def _build_server_section(self) -> Gtk.Widget:
+        """Choose which test server to measure against.
+
+        This matters more than it looks. The engine picks by lowest latency,
+        which is not the same as fastest: on a gigabit line the nearest server
+        and the quickest server can differ by hundreds of Mbps. Worse, left
+        automatic the engine may pick differently between runs, so a change in
+        a recorded speed can mean only that a different server answered --
+        which defeats the point of keeping a history.
+        """
+        box = self._section("Test server")
+
+        #: ``None`` marks the automatic entry; otherwise a server id.
+        self._server_ids: list[str | None] = [None]
+        self._saved_server_id = (self.database.get_setting(SETTING_SERVER_ID) or "").strip()
+
+        labels = ["Automatic (whichever the engine picks)"]
+        if self._saved_server_id:
+            # Show the saved pin even before the list has been fetched, so the
+            # current choice is never misrepresented as automatic.
+            labels.append(f"Currently pinned: server {self._saved_server_id}")
+            self._server_ids.append(self._saved_server_id)
+
+        self.server_dropdown = Gtk.DropDown.new_from_strings(labels)
+        self.server_dropdown.set_selected(1 if self._saved_server_id else 0)
+        box.append(
+            _labelled_row(
+                "_Server to test against",
+                self.server_dropdown,
+                "Pinning one server keeps your history comparable. Leave it automatic "
+                "and the engine re-picks by lowest latency each time, so a change in "
+                "the recorded speed may only mean a different server answered.",
+            )
+        )
+
+        self.find_servers_button = Gtk.Button(label="Find nearby servers")
+        self.find_servers_button.set_halign(Gtk.Align.START)
+        self.find_servers_button.connect("clicked", self._on_find_servers)
+        box.append(self.find_servers_button)
+
+        self.server_status = Gtk.Label(xalign=0.0, wrap=True)
+        self.server_status.add_css_class("dim-label")
+        self.server_status.set_text(
+            "Fetching the list contacts Ookla, so it happens only when you ask."
+        )
+        box.append(self.server_status)
+
+        tip = Gtk.Label(
+            label=(
+                "Tip: the fastest server is often not the closest. To compare, run "
+                "each candidate once from a terminal with "
+                "speedtest --server-id=NUMBER and pin whichever is quickest."
+            ),
+            xalign=0.0,
+            wrap=True,
+        )
+        tip.add_css_class("dim-label")
+        box.append(tip)
+        return box
+
+    def _on_find_servers(self, button: Gtk.Button) -> None:
+        """Fetch the server list off the main loop."""
+        engine = select_engine(self.database.get_setting(SETTING_ENGINE_NAME) or AUTOMATIC)
+        if engine is None or not hasattr(engine, "list_servers"):
+            self.server_status.set_text(
+                "No speed-test engine is installed, so the server list cannot be fetched."
+            )
+            return
+
+        button.set_sensitive(False)
+        self.server_status.set_text("Contacting Ookla for nearby servers...")
+
+        def work() -> None:
+            try:
+                servers = engine.list_servers()
+                GLib.idle_add(self._on_servers_found, servers, None)
+            except EngineError as exc:
+                GLib.idle_add(self._on_servers_found, [], exc.message)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_servers_found(self, servers: list, error: str | None) -> bool:
+        self.find_servers_button.set_sensitive(True)
+
+        if error:
+            self.server_status.set_text(f"Could not fetch the server list. {error}")
+            return GLib.SOURCE_REMOVE
+        if not servers:
+            self.server_status.set_text("The engine returned no nearby servers.")
+            return GLib.SOURCE_REMOVE
+
+        labels = ["Automatic (whichever the engine picks)"]
+        self._server_ids = [None]
+        selected = 0
+        for index, server in enumerate(servers, start=1):
+            labels.append(describe_server(server))
+            self._server_ids.append(server["id"])
+            if server["id"] == self._saved_server_id:
+                selected = index
+
+        # A pin that is no longer in the list is kept rather than silently
+        # dropped, so saving does not quietly revert the user's choice.
+        if self._saved_server_id and selected == 0:
+            labels.append(f"Currently pinned: server {self._saved_server_id}")
+            self._server_ids.append(self._saved_server_id)
+            selected = len(self._server_ids) - 1
+
+        self.server_dropdown.set_model(Gtk.StringList.new(labels))
+        self.server_dropdown.set_selected(selected)
+        self.server_status.set_text(
+            f"Found {len(servers)} nearby server{'s' if len(servers) != 1 else ''}. "
+            "Choose one and press Save."
+        )
+        return GLib.SOURCE_REMOVE
 
     def _build_startup_section(self) -> Gtk.Widget:
         box = self._section("Background operation")
@@ -253,6 +373,11 @@ class SettingsDialog(Gtk.Window):
         selected = self.engine_dropdown.get_selected()
         if 0 <= selected < len(self._engine_ids):
             self.database.set_setting(SETTING_ENGINE_NAME, self._engine_ids[selected])
+
+        server_index = self.server_dropdown.get_selected()
+        if 0 <= server_index < len(self._server_ids):
+            chosen = self._server_ids[server_index]
+            self.database.set_setting(SETTING_SERVER_ID, chosen or "")
 
         self.database.set_bool(SETTING_RUN_AFTER_LOGIN, self.login_switch.get_active())
         self.database.set_bool(SETTING_EXPORT_INCLUDE_IP, self.include_ip_switch.get_active())

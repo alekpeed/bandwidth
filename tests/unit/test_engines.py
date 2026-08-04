@@ -235,3 +235,97 @@ class TestParsedOutputRoutesThroughTheEngine:
         measurement = engine.parse_output(json.dumps(SUCCESS_RESULT))
         assert measurement.engine_name == "ookla"
         assert measurement.download_bps == 95_000_000
+
+
+class TestPinnedServer:
+    """Pinning a test server.
+
+    Added in 1.2.0 after a gigabit line measured 696 Mbps against the
+    lowest-latency server and 926 against another one 0.5 ms further away.
+    The engine chooses by latency, which is not the same as fastest, and it
+    re-chooses on every run -- so an unpinned history records server changes
+    as if they were connection changes.
+    """
+
+    def test_no_server_argument_when_unpinned(self, monkeypatch):
+        engine = OoklaEngine()
+        monkeypatch.setattr(engine, "executable_path", lambda: "/usr/bin/speedtest")
+
+        assert not any("--server-id" in part for part in engine.build_command())
+
+    def test_the_pinned_server_is_passed_to_the_engine(self, monkeypatch):
+        engine = OoklaEngine()
+        engine.server_id = "16976"
+        monkeypatch.setattr(engine, "executable_path", lambda: "/usr/bin/speedtest")
+
+        assert "--server-id=16976" in engine.build_command()
+
+    @pytest.mark.parametrize("bad", ["; rm -rf /", "16976; ls", "abc", "--help", " "])
+    def test_a_non_numeric_server_id_is_refused(self, monkeypatch, bad):
+        """The value comes from a stored setting, so it is validated.
+
+        The command is an argument vector and is never shell-interpreted, so
+        this is not an injection fix; it turns a confusing engine error into a
+        clear one at the point the mistake is visible.
+        """
+        from bandwidth_logger.engines.base import EngineError
+
+        engine = OoklaEngine()
+        engine.server_id = bad
+        monkeypatch.setattr(engine, "executable_path", lambda: "/usr/bin/speedtest")
+
+        with pytest.raises(EngineError):
+            engine.build_command()
+
+
+class TestServerList:
+    def test_the_server_list_is_parsed(self):
+        from bandwidth_logger.core.result_parser import describe_server, parse_server_list
+
+        payload = json.dumps(
+            {
+                "type": "serverList",
+                "servers": [
+                    {"id": 16976, "name": "Spectrum", "location": "New York, NY",
+                     "country": "United States"},
+                    {"id": 13098, "name": "Pilot Fiber", "location": "New York, NY",
+                     "country": "United States"},
+                ],
+            }
+        )
+        servers = parse_server_list(payload)
+
+        assert [s["id"] for s in servers] == ["16976", "13098"]
+        assert servers[0]["name"] == "Spectrum"
+        assert describe_server(servers[0]) == "Spectrum - New York, NY (16976)"
+
+    def test_unusable_entries_are_skipped_not_fatal(self):
+        """A partly usable list beats no list."""
+        from bandwidth_logger.core.result_parser import parse_server_list
+
+        payload = json.dumps(
+            {
+                "servers": [
+                    {"id": 16976, "name": "Spectrum", "location": "New York, NY"},
+                    {"name": "No id at all"},
+                    "not even an object",
+                    {"id": "not-a-number", "name": "Bad id"},
+                ]
+            }
+        )
+        servers = parse_server_list(payload)
+
+        assert [s["id"] for s in servers] == ["16976"]
+
+    def test_a_response_without_servers_is_rejected(self):
+        from bandwidth_logger.core.result_parser import ParseError, parse_server_list
+
+        with pytest.raises(ParseError):
+            parse_server_list(json.dumps({"type": "result"}))
+
+    def test_a_server_with_no_location_still_describes(self):
+        from bandwidth_logger.core.result_parser import describe_server
+
+        assert describe_server({"id": "1", "name": "Somewhere", "location": "", "country": ""}) == (
+            "Somewhere (1)"
+        )

@@ -39,6 +39,7 @@ from ..engines.base import EngineError, classify_error_text
 from ..engines.registry import AUTOMATIC, select_engine
 from ..storage.database import (
     SETTING_ENGINE_NAME,
+    SETTING_SERVER_ID,
     SETTING_TIMEOUT_SECONDS,
     Database,
     DatabaseError,
@@ -147,7 +148,14 @@ class TestRunner:
         if self._forced_engine is not None:
             return self._forced_engine
         preference = self.database.get_setting(SETTING_ENGINE_NAME) or AUTOMATIC
-        return select_engine(preference)
+        engine = select_engine(preference)
+        if engine is not None:
+            # A pinned server keeps a history comparable over time. Without
+            # one the engine re-chooses by lowest latency on every run, and a
+            # change in the recorded speed can mean nothing more than that a
+            # different server answered.
+            engine.server_id = (self.database.get_setting(SETTING_SERVER_ID) or "").strip() or None
+        return engine
 
     def resolve_timeout(self) -> int:
         """Engine timeout in seconds.

@@ -62,6 +62,16 @@ class SpeedTestEngine(abc.ABC):
     #: Lower sorts first when choosing automatically.
     preference: int = 100
 
+    #: Test server to pin, or None to let the engine choose.
+    #:
+    #: Engines pick a server by lowest latency, which is not the same as
+    #: fastest -- on a gigabit line the difference between the nearest and the
+    #: quickest server can be hundreds of Mbps. Left unpinned, the engine may
+    #: also choose differently between runs, which makes a history of results
+    #: incomparable: a change in the number could mean the connection changed,
+    #: or merely that a different server answered.
+    server_id: str | None = None
+
     # -- availability ------------------------------------------------------
 
     def executable_path(self) -> str | None:

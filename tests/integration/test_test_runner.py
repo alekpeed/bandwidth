@@ -383,3 +383,37 @@ def _source_root():
     from pathlib import Path
 
     return Path(__file__).resolve().parents[2] / "src"
+
+
+class TestServerPinning:
+    """The stored pin reaches the engine."""
+
+    def test_the_saved_server_is_applied_to_the_resolved_engine(self, database, monkeypatch):
+        from bandwidth_logger.engines.ookla import OoklaEngine
+        from bandwidth_logger.storage.database import SETTING_SERVER_ID
+
+        monkeypatch.setattr(OoklaEngine, "is_available", lambda self: True)
+        database.set_setting(SETTING_SERVER_ID, "16976")
+
+        engine = TestRunner(database).resolve_engine()
+
+        assert engine is not None
+        assert engine.server_id == "16976"
+
+    def test_an_empty_setting_leaves_the_engine_free_to_choose(self, database, monkeypatch):
+        from bandwidth_logger.engines.ookla import OoklaEngine
+        from bandwidth_logger.storage.database import SETTING_SERVER_ID
+
+        monkeypatch.setattr(OoklaEngine, "is_available", lambda self: True)
+        database.set_setting(SETTING_SERVER_ID, "   ")
+
+        assert TestRunner(database).resolve_engine().server_id is None
+
+    def test_the_server_that_answered_is_recorded_either_way(self, runner, database):
+        """Pinned or not, the row names the server, so a history can always
+        be checked for a server change after the fact.
+        """
+        run = runner.run_test(TriggerType.MANUAL).run
+
+        assert run.server_id == "12345"
+        assert run.server_name == "Example Telecom"
