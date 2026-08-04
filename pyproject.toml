@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bandwidth-logger"
+version = "1.0.0"
+description = "Native Ubuntu desktop application that runs scheduled internet speed tests and keeps a complete local history."
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.11"
+authors = [{ name = "Bandwidth Logger contributors" }]
+keywords = ["speedtest", "bandwidth", "gtk", "ubuntu"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: GTK",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Networking :: Monitoring",
+]
+
+# Runtime GUI dependencies (PyGObject / GTK 4) are provided by the distribution
+# packages python3-gi and gir1.2-gtk-4.0, not by PyPI. See docs/DEPENDENCIES.md.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+bandwidth-logger = "bandwidth_logger.application:main"
+bandwidth-logger-run = "bandwidth_logger.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bandwidth_logger = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: end-to-end tests that spawn real subprocesses (fake engine only)",
+    "allow_engine_discovery: opt out of the guard that hides real speed-test engines",
+]
+filterwarnings = ["error::DeprecationWarning:bandwidth_logger.*"]

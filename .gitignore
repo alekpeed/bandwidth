@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# The build script symlinks ./debian -> packaging/debian, so debhelper writes
+# its intermediates into packaging/debian/. Ignore the products, keep the
+# control files.
+/debian
+packaging/debian/.debhelper/
+packaging/debian/bandwidth-logger/
+packaging/debian/files
+packaging/debian/*.debhelper
+packaging/debian/*.debhelper.log
+packaging/debian/*.substvars
+packaging/debian/debhelper-build-stamp
+.pybuild/
+
+# Build metadata that is regenerated every build. The .deb itself is kept
+# in dist/ as a release artefact.
+dist/*.buildinfo
+dist/*.changes
