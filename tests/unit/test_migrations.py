@@ -86,15 +86,18 @@ class TestUpgradePreservesData:
         def migration_002(connection):
             connection.execute("ALTER TABLE test_runs ADD COLUMN notes TEXT NULL")
 
+        # One past whatever currently ships, so this stays valid as real
+        # migrations are added.
+        next_version = migrations.LATEST_VERSION + 1
         monkeypatch.setattr(
             migrations,
             "MIGRATIONS",
-            [*migrations.MIGRATIONS, (2, "add notes column", migration_002)],
+            [*migrations.MIGRATIONS, (next_version, "add notes column", migration_002)],
         )
 
         upgraded = Database(path).open()
         try:
-            assert upgraded.schema_version == 2
+            assert upgraded.schema_version == next_version
             assert [run.id for run in upgraded.list_runs()] == original_ids
             assert upgraded.count_runs() == 7
             # The user's setting survived, rather than being reset to default.
@@ -126,17 +129,18 @@ class TestFailureHandling:
             conn.execute("CREATE TABLE half_done (id INTEGER)")
             conn.execute("THIS IS NOT SQL")
 
+        shipped = migrations.LATEST_VERSION
         monkeypatch.setattr(
             migrations,
             "MIGRATIONS",
-            [*migrations.MIGRATIONS, (2, "broken", broken)],
+            [*migrations.MIGRATIONS, (shipped + 1, "broken", broken)],
         )
 
         with pytest.raises(sqlite3.Error):
             migrations.migrate(connection)
 
         # Rolled back whole: neither the version nor the partial table stuck.
-        assert migrations.current_version(connection) == 1
+        assert migrations.current_version(connection) == shipped
         assert "half_done" not in table_names(connection)
 
     def test_an_unopenable_database_raises_rather_than_failing_silently(self, tmp_path):

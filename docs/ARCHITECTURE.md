@@ -32,7 +32,10 @@ background timer can run a test in a process that has no display at all.
 | `ui/settings_dialog.py` | Settings, and the first-run engine setup screen. |
 | `core/models.py` | `TestRun`, statuses, trigger types, error categories, timestamp and unit helpers. |
 | `core/test_runner.py` | Runs one test. The only place a test is ever run. |
-| `core/scheduler.py` | Creates, updates and inspects the systemd user timer. |
+| `core/scheduler.py` | Creates, updates and inspects the systemd user timer and the monitor service. |
+| `core/monitor.py` | The continuous throughput sampling loop. |
+| `system/throughput.py` | Reading and interpreting the kernel byte counters. |
+| `monitor_cli.py` | Entry point for the throughput monitor service. |
 | `core/result_parser.py` | Engine output → normalised measurement. |
 | `engines/base.py` | The engine interface and error normalisation. |
 | `engines/ookla.py` | The Ookla Speedtest CLI adapter. |
@@ -228,3 +231,71 @@ owns the loop.
 The window also re-reads the database every 10 seconds. Scheduled tests
 happen in another process, so the window cannot rely on having seen them —
 it shows what is actually stored.
+
+
+---
+
+## Throughput monitoring
+
+Added in 1.7.0, and deliberately a separate mechanism from the test
+scheduler.
+
+### Why it is a service, not a timer
+
+The two jobs have opposite shapes. A speed test is short, occasional and
+expensive: it saturates the connection, so it must be rationed and is
+naturally a timer firing a oneshot. Throughput sampling is continuous and
+nearly free: two file reads every couple of seconds. A timer at that cadence
+would mean 30 process launches a minute, which would cost far more than the
+measurement.
+
+They are also independent by design: either can run without the other, and
+neither failing takes the other down.
+
+### Why per-minute summaries
+
+At a two-second cadence, a day of raw readings is about 43,000 rows, almost
+all of which record that nothing much happened. Summarising to one row a
+minute stores 1,440 rows a day instead.
+
+The summary keeps the **peak** alongside the mean, because averaging is
+exactly what would destroy the interesting event. A ten-second burst at full
+line rate inside an otherwise idle minute leaves a mean that looks like
+nothing; the peak shows what really happened.
+
+### What the counters do not tell you
+
+`/sys/class/net/<interface>/statistics/` counts bytes since the interface came
+up. Two facts about that shape the code:
+
+* **They reset.** An interface that goes down and up starts from zero. A
+  naive subtraction then yields a large negative delta — and taking its
+  magnitude would invent an enormous burst of traffic that never occurred. A
+  reading lower than its predecessor discards the interval instead.
+* **The route moves.** Unplugging Ethernet hands the default route to Wi-Fi.
+  Continuing to accumulate into the same summary would attribute one link's
+  traffic to another, so a change of interface closes the current summary and
+  starts a new one.
+
+An implausible rate — beyond any real link — is also discarded, on the
+grounds that a counter was misread rather than that a terabit arrived.
+
+### Concurrent usage on tests
+
+While the monitor runs, each speed test records what the link was already
+carrying when it began.
+
+This closes a real gap. A test over a busy connection measures the capacity
+left over, so a scheduled test firing during a large download records a low
+figure indistinguishable from a fault. Given that this application exists to
+diagnose intermittent slowdowns, a systematically misleading low reading is
+precisely the failure mode worth eliminating — and the fix is context, not a
+cleverer measurement.
+
+### Retention
+
+Throughput samples are the only records with a retention window: 30 days by
+default. `test_runs` has none and never will. The distinction is that a test
+attempt is evidence about the connection, while a throughput sample is
+telemetry about a minute — plentiful, and only interesting in aggregate once
+it is old.

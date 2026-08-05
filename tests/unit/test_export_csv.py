@@ -220,3 +220,40 @@ class TestFilename:
         assert len(stamp) == len("2026-08-04_09-15")
         assert stamp[4] == stamp[7] == "-"
         assert stamp[10] == "_"
+
+
+class TestNumberFormatting:
+    """Plain decimal, never scientific notation.
+
+    ``%g`` renders 12,400,000.0 as ``1.24e+07``. Nobody opening a spreadsheet
+    of bits per second wants that, and it is a needless parsing risk for any
+    other tool reading the column.
+    """
+
+    def test_large_values_are_written_in_full(self, tmp_path):
+        destination = tmp_path / "out.csv"
+        write_runs(destination, [make_run(download_bps=930_000_000, upload_bps=56_000_000)])
+
+        row = read_csv(destination)[0]
+        assert row["download_bps"] == "930000000"
+        assert "e+" not in destination.read_text(encoding="utf-8")
+
+    def test_fractional_values_keep_their_precision(self, tmp_path):
+        destination = tmp_path / "out.csv"
+        write_runs(destination, [make_run(idle_latency_ms=10.56, jitter_ms=1.234)])
+
+        row = read_csv(destination)[0]
+        assert row["idle_latency_ms"] == "10.56"
+        assert row["jitter_ms"] == "1.234"
+
+    def test_a_whole_number_float_has_no_trailing_zeros(self, tmp_path):
+        destination = tmp_path / "out.csv"
+        write_runs(destination, [make_run(idle_latency_ms=11.0)])
+
+        assert read_csv(destination)[0]["idle_latency_ms"] == "11"
+
+    def test_zero_is_still_zero(self, tmp_path):
+        destination = tmp_path / "out.csv"
+        write_runs(destination, [make_run(packet_loss_percent=0.0)])
+
+        assert read_csv(destination)[0]["packet_loss_percent"] == "0"

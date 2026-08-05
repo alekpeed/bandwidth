@@ -14,5 +14,11 @@ against.
 `bandwidth-logger-test.timer` below shows a 30-minute interval; the generated
 file substitutes whichever interval is configured.
 
+`bandwidth-logger-monitor.service` is the continuous throughput monitor. It
+is a long-running service rather than a timer, because it samples the
+interface counters every couple of seconds. Unlike the test service it does
+no network activity at all -- it only reads counters the kernel maintains
+anyway.
+
 Both units are **user** units. Nothing here runs as root, and neither file is
 ever written outside the user's home directory.

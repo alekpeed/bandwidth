@@ -96,6 +96,15 @@ and integration tests.
   `speedtest-cli` is rejected rather than driven with the wrong arguments.
 * **Every error category has short, plain wording** for the status area.
 * **Commands are argument vectors** with no shell metacharacters.
+* **A counter reset never invents traffic** — an interface that restarts from
+  zero discards the interval instead of reporting a huge negative delta as a
+  huge positive one.
+* **A change of interface closes the throughput summary**, so one link's
+  traffic is never attributed to another.
+* **Pruning throughput never touches speed-test records**, which have no
+  retention window and never will.
+* **CSV writes plain decimals**, never scientific notation — 12,400,000.0 as
+  `12400000`, not `1.24e+07`.
 
 ### The GUI smoke test
 
@@ -120,7 +129,7 @@ lets it run on a headless machine.
 Run on Ubuntu 24.04.4 with Python 3.12.3, GTK 4.14.5, under Xvfb:
 
 ```
-232 passed
+274 passed
 ```
 
 Both `python3.11` and `python3.12` were used; the packaged application runs

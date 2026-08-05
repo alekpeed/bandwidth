@@ -1,3 +1,23 @@
+bandwidth-logger (1.7.0-1) noble; urgency=medium
+
+  * Add a continuous throughput monitor. A new user service reads the kernel's
+    interface byte counters every two seconds and stores one summary a minute
+    with mean, peak and total bytes in each direction. This measures usage,
+    not capacity: it generates no traffic and needs no privileges.
+  * Record concurrent throughput on every speed test. A test run over a busy
+    connection measures the capacity that was left over, so a scheduled test
+    that fired during a large download recorded a low figure that looked like
+    a fault. The result now carries what else was in flight.
+  * Show live throughput in the window, updated every two seconds, read
+    directly from the counters so it is current even with the monitor off.
+  * Export throughput summaries to CSV, with raw and display columns.
+  * Throughput samples are kept for 30 days by default, configurable. Speed
+    test records remain permanent and are never pruned.
+  * Write plain decimals in CSV rather than scientific notation. Large float
+    values such as bits per second were rendered as "1.24e+07".
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Wed, 05 Aug 2026 09:00:00 +0000
+
 bandwidth-logger (1.6.0-1) noble; urgency=medium
 
   * Work the next run time out from the recorded history when systemd will

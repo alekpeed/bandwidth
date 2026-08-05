@@ -50,6 +50,7 @@ from ..storage.database import (  # noqa: E402
     SETTING_CLOSE_NOTICE_SHOWN,
     SETTING_EXPORT_INCLUDE_IP,
     SETTING_INTERVAL_MINUTES,
+    SETTING_MONITOR_ENABLED,
     SETTING_RUN_AFTER_LOGIN,
     SETTING_SORT_NEWEST_FIRST,
     Database,
@@ -62,6 +63,11 @@ from ..storage.export_csv import (  # noqa: E402
     local_day_start_utc,
 )
 from ..system import paths  # noqa: E402
+from ..system.throughput import (  # noqa: E402
+    difference,
+    format_rate,
+    read_counters,
+)
 from ..system.logging_setup import get_logger  # noqa: E402
 from .details_dialog import DetailsDialog  # noqa: E402
 from .settings_dialog import EngineSetupDialog, SettingsDialog  # noqa: E402
@@ -73,6 +79,10 @@ log = get_logger("main_window")
 REFRESH_SECONDS = 10
 
 CUSTOM_INTERVAL_LABEL = "Custom interval..."
+
+#: How often the live throughput readout updates. Two seconds is responsive
+#: enough to watch a download start, and costs two file reads.
+THROUGHPUT_REFRESH_SECONDS = 2
 
 
 class RunObject(GObject.Object):
@@ -119,6 +129,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self.refresh_all()
 
         self._refresh_source = GLib.timeout_add_seconds(REFRESH_SECONDS, self._on_periodic_refresh)
+        self._previous_counters = None
+        self._throughput_source = GLib.timeout_add_seconds(
+            THROUGHPUT_REFRESH_SECONDS, self._on_throughput_tick
+        )
         self.connect("close-request", self._on_close_request)
 
         GLib.idle_add(self._first_run_checks)
@@ -262,6 +276,17 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.state_label = Gtk.Label(label="Current state: Idle", xalign=0.0)
         bottom.append(self.state_label)
+
+        # Live throughput: what the connection is carrying right now, as
+        # distinct from what a speed test says it could carry. Read straight
+        # from the kernel counters rather than from the database, so it is
+        # current even when the background monitor is switched off.
+        self.throughput_label = Gtk.Label(label="", xalign=0.0)
+        self.throughput_label.set_tooltip_text(
+            "Traffic currently flowing, measured from the network interface. "
+            "This is usage, not capacity \u2014 unlike a speed test it sends nothing."
+        )
+        bottom.append(self.throughput_label)
 
         self.progress = Gtk.ProgressBar()
         self.progress.set_valign(Gtk.Align.CENTER)
@@ -429,6 +454,31 @@ class MainWindow(Gtk.ApplicationWindow):
     # ------------------------------------------------------------------
     # Refresh
     # ------------------------------------------------------------------
+
+    def _on_throughput_tick(self) -> bool:
+        """Update the live throughput readout from the interface counters."""
+        from ..system.throughput import current_interface
+
+        interface, _link_type = current_interface()
+        if interface is None:
+            self.throughput_label.set_text("Traffic: no network")
+            self._previous_counters = None
+            return GLib.SOURCE_CONTINUE
+
+        reading = read_counters(interface)
+        if reading is None:
+            self._previous_counters = None
+            return GLib.SOURCE_CONTINUE
+
+        if self._previous_counters is not None:
+            sample = difference(self._previous_counters, reading)
+            if sample is not None:
+                self.throughput_label.set_text(
+                    f"Traffic now: down {format_rate(sample.rx_bits_per_second)}"
+                    f"  up {format_rate(sample.tx_bits_per_second)}"
+                )
+        self._previous_counters = reading
+        return GLib.SOURCE_CONTINUE
 
     def _on_periodic_refresh(self) -> bool:
         self.refresh_all()
@@ -833,6 +883,9 @@ class MainWindow(Gtk.ApplicationWindow):
                 interval_minutes=self.database.get_int(SETTING_INTERVAL_MINUTES, 30),
                 run_after_login=self.database.get_bool(SETTING_RUN_AFTER_LOGIN),
             )
+            self.scheduler.apply_monitor(
+                enabled=self.database.get_bool(SETTING_MONITOR_ENABLED)
+            )
         except (SchedulerError, DatabaseError) as exc:
             log.warning("Could not re-apply the schedule after saving settings: %s", exc)
         self.refresh_all()
@@ -874,9 +927,11 @@ class MainWindow(Gtk.ApplicationWindow):
                 "it off next time you open Bandwidth Logger.\n\n"
                 "This message is shown only once.",
             )
-        if getattr(self, "_refresh_source", None):
-            GLib.source_remove(self._refresh_source)
-            self._refresh_source = None
+        for attribute in ("_refresh_source", "_throughput_source"):
+            source = getattr(self, attribute, None)
+            if source:
+                GLib.source_remove(source)
+                setattr(self, attribute, None)
         return False
 
     # ------------------------------------------------------------------

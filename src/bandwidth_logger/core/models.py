@@ -240,6 +240,8 @@ TEST_RUN_FIELDS: tuple[str, ...] = (
     "application_version",
     "raw_result_json",
     "created_at_utc",
+    "concurrent_rx_bps",
+    "concurrent_tx_bps",
 )
 
 
@@ -284,6 +286,12 @@ class TestRun:
     connection_type: str | None = None
     engine_version: str | None = None
     raw_result_json: str | None = None
+    #: How much traffic the link was already carrying when the test began.
+    #: A test run over a busy connection measures the capacity that was left,
+    #: so these turn an otherwise inexplicable low reading into a explained
+    #: one. NULL when the throughput monitor was not running.
+    concurrent_rx_bps: float | None = None
+    concurrent_tx_bps: float | None = None
 
     # -- derived views -----------------------------------------------------
 
@@ -349,3 +357,59 @@ class EngineMeasurement:
     external_ip: str | None = None
     interface_name: str | None = None
     raw_result_json: str | None = None
+
+
+@dataclasses.dataclass(slots=True)
+class ThroughputSummary:
+    """One minute of observed traffic on one interface.
+
+    Distinct from a speed test in kind, not just degree: a test measures what
+    the connection *could* carry by saturating it, this records what it
+    actually carried without sending anything.
+    """
+
+    interface_name: str
+    started_at_utc: str
+    started_at_local: str
+    ended_at_utc: str
+    duration_ms: int
+    sample_count: int
+    rx_bytes: int
+    tx_bytes: int
+    rx_bps_mean: float
+    tx_bps_mean: float
+    rx_bps_peak: float
+    tx_bps_peak: float
+    application_version: str
+    created_at_utc: str
+    connection_type: str | None = None
+    id: int | None = None
+
+    def to_row(self) -> dict[str, Any]:
+        return {field: getattr(self, field) for field in THROUGHPUT_FIELDS}
+
+    @classmethod
+    def from_row(cls, row: Any) -> "ThroughputSummary":
+        data = {key: row[key] for key in row.keys()} if hasattr(row, "keys") else dict(row)
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{key: value for key, value in data.items() if key in known})
+
+
+#: Column order of ``throughput_samples``, excluding the generated id.
+THROUGHPUT_FIELDS: tuple[str, ...] = (
+    "interface_name",
+    "started_at_utc",
+    "started_at_local",
+    "ended_at_utc",
+    "duration_ms",
+    "sample_count",
+    "rx_bytes",
+    "tx_bytes",
+    "rx_bps_mean",
+    "tx_bps_mean",
+    "rx_bps_peak",
+    "tx_bps_peak",
+    "connection_type",
+    "application_version",
+    "created_at_utc",
+)

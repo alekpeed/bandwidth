@@ -82,6 +82,49 @@ everything.
 
 ---
 
+## `throughput_samples`
+
+One row per minute of observed traffic, written by the throughput monitor.
+Added in schema version 2.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | INTEGER | no | Primary key. |
+| `interface_name` | TEXT | no | The interface the traffic crossed. |
+| `started_at_utc` | TEXT | no | ISO 8601, UTC. |
+| `started_at_local` | TEXT | no | With the offset in force at that instant. |
+| `ended_at_utc` | TEXT | no | |
+| `duration_ms` | INTEGER | no | Measured, not assumed — a summary can be short. |
+| `sample_count` | INTEGER | no | How many readings the summary covers. |
+| `rx_bytes` / `tx_bytes` | INTEGER | no | Totals over the window. |
+| `rx_bps_mean` / `tx_bps_mean` | REAL | no | Average bits per second. |
+| `rx_bps_peak` / `tx_bps_peak` | REAL | no | Highest single reading. |
+| `connection_type` | TEXT | yes | e.g. `Ethernet`, `Wi-Fi`. |
+| `application_version` | TEXT | no | |
+| `created_at_utc` | TEXT | no | |
+
+Indexes: `started_at_utc`, `interface_name`.
+
+**Peak is stored separately from mean** because averaging destroys the event
+worth seeing. Ten seconds at full line rate inside an otherwise idle minute
+leaves a mean that looks like nothing happened.
+
+**This is the only table with a retention window.** Samples older than the
+configured number of days (30 by default) are deleted. `test_runs` has no
+retention limit and is never pruned — that guarantee is what the application
+exists to provide.
+
+### Concurrent usage on `test_runs`
+
+Schema version 2 also adds `concurrent_rx_bps` and `concurrent_tx_bps` to
+`test_runs`. They record how much traffic the link was already carrying when
+a speed test began.
+
+A test run over a busy connection measures the capacity that was *left*, so
+without this a scheduled test that fired during a large download records a
+low figure indistinguishable from a real fault. NULL when the monitor was not
+running — which is different from zero, meaning the link was idle.
+
 ## `settings`
 
 | Column | Type | Null |
@@ -98,7 +141,11 @@ everything.
 | `export_include_external_ip` | `false` | Include the IP column in exports. |
 | `table_sort_newest_first` | `true` | Table order. |
 | `engine_timeout_seconds` | `180` | Clamped to 30–3600. |
-| `preferred_engine` | `auto` | `auto`, `ookla` or `speedtest-cli`. |
+| `preferred_engine` | `auto` | `auto` or `ookla`. |
+| `preferred_server_id` | *(empty)* | Pinned test server; empty lets the engine choose. |
+| `throughput_monitor_enabled` | `false` | Whether the monitor service runs. |
+| `throughput_sample_seconds` | `2` | Sampling interval. Clamped to 1–60. |
+| `throughput_retention_days` | `30` | How long samples are kept. |
 | `close_behaviour_notice_shown` | `false` | The one-time close explanation. |
 
 Settings live in the database rather than a separate file, so one backup of
@@ -119,6 +166,7 @@ new settings without overwriting choices the user has already made.
 | Version | Description |
 |---|---|
 | 1 | Initial schema: `settings`, `test_runs`, indexes. |
+| 2 | Throughput monitoring: `throughput_samples`, plus `concurrent_rx_bps` and `concurrent_tx_bps` on `test_runs`. |
 
 ---
 

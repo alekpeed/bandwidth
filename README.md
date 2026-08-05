@@ -32,7 +32,7 @@ history of readings, with the failures included, proves something.
 
 Requires Ubuntu 24.04 LTS or later, on x86-64.
 
-**Download `bandwidth-logger_1.3.0-1_all.deb` and double-click it.** Your
+**Download `bandwidth-logger_1.7.0-1_all.deb` and double-click it.** Your
 software installer opens, you press Install, and that is the whole procedure.
 
 Then launch **Bandwidth Logger** from the application menu — press the Super
@@ -45,7 +45,7 @@ Nothing after this point needs a terminal.
 
 ```bash
 cd ~/Downloads
-sudo apt install ./bandwidth-logger_1.3.0-1_all.deb
+sudo apt install ./bandwidth-logger_1.7.0-1_all.deb
 ```
 
 The leading `./` is required; without it `apt` looks for a package of that
@@ -56,7 +56,7 @@ If `apt` reports `Unsupported file ... given on commandline`, it has not
 recognised the file as a Debian archive. Check the download with:
 
 ```bash
-file ~/Downloads/bandwidth-logger_1.3.0-1_all.deb
+file ~/Downloads/bandwidth-logger_1.7.0-1_all.deb
 ```
 
 A good copy reports `Debian binary package (format 2.0)`. Anything else means
@@ -163,6 +163,40 @@ a zero.
 Your external IP address is stored with each record but is **excluded from
 exports by default**. Tick the box in the export dialog to include it.
 
+### Recording throughput
+
+A speed test measures **capacity** — how fast the line *can* go — by
+saturating it. The throughput monitor measures **usage** — how much is
+actually flowing — by reading counters the kernel keeps anyway. It sends
+nothing, uses no bandwidth, and needs no privileges.
+
+Switch it on in **Settings → Throughput monitor**. A background service then
+records one row a minute holding the mean, the peak and the total bytes each
+way. The peak is the point: a ten-second burst at full line rate shows up
+there even when the minute's average looks quiet.
+
+The window also shows a live **Traffic now** readout, updated every two
+seconds, read straight from the counters — so it works whether or not the
+background monitor is switched on.
+
+**This also explains odd speed-test results.** A test run while the
+connection is already busy measures only the capacity left over, so a
+scheduled test that happens to fire during a large download records a low
+figure that looks like a fault and is not. With the monitor running, every
+result stores what else was in flight at the time.
+
+Throughput samples are kept for 30 days by default, adjustable in Settings.
+Speed-test records are never pruned — that permanence is the point of the
+application, and nothing about the monitor changes it.
+
+From a terminal, if you want it:
+
+```bash
+bandwidth-logger-monitor --once      # one reading, right now
+bandwidth-logger-monitor --summary   # recent recorded minutes
+bandwidth-logger-run --export-throughput ~/throughput.csv
+```
+
 ### Choosing a test server
 
 **Settings → Test server** decides which server your results are measured
@@ -216,7 +250,7 @@ nothing was scheduled.
 |---|---|
 | Records and settings | `~/.local/share/bandwidth-logger/bandwidth-logger.sqlite3` |
 | Diagnostic log | `~/.local/state/bandwidth-logger/application.log` |
-| Timer and service | `~/.config/systemd/user/bandwidth-logger-test.{timer,service}` |
+| Timer and services | `~/.config/systemd/user/bandwidth-logger-test.{timer,service}`, `bandwidth-logger-monitor.service` |
 
 The SQLite database is the authoritative history. The diagnostic log is only
 for troubleshooting; it rotates and is not a record of results.
@@ -284,7 +318,7 @@ speedtest-cli but it is not installed`, because installing Ookla's engine
 removed the package 1.0.0 depended on. Recover with:
 
 ```bash
-sudo dpkg -i bandwidth-logger_1.3.0-1_all.deb
+sudo dpkg -i bandwidth-logger_1.7.0-1_all.deb
 sudo apt-get -f install
 ```
 

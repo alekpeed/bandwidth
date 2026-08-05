@@ -244,6 +244,18 @@ class TestRunner:
         run.interface_name = interface
         run.connection_type = link_type
 
+        # What the link was already carrying when this test began. A test run
+        # over a busy connection measures the capacity that was left over, so
+        # without this a scheduled test that happened to fire during a large
+        # download looks like a fault rather than a coincidence.
+        try:
+            concurrent = self.database.throughput_around(run.started_at_utc)
+        except DatabaseError:
+            concurrent = None
+        if concurrent is not None:
+            run.concurrent_rx_bps = concurrent.rx_bps_mean
+            run.concurrent_tx_bps = concurrent.tx_bps_mean
+
         if engine is None:
             self._finish(run, started_at, monotonic_start)
             run.status = RunStatus.FAILED

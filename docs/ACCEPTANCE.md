@@ -33,7 +33,7 @@ Nothing is marked passed that was not actually exercised.
 | OS | Ubuntu 24.04.4 LTS (headless container) |
 | Python | 3.12.3 (system) and 3.11.15 |
 | GTK | 4.14.5, PyGObject 3.48.2 |
-| Package built | `bandwidth-logger_1.6.0-1_all.deb` |
+| Package built | `bandwidth-logger_1.7.0-1_all.deb` |
 | Test suite | 232 passed |
 | lintian | 1 warning (`initial-upload-closes-no-bugs`, expected for a first release) |
 
@@ -44,7 +44,7 @@ Nothing is marked passed that was not actually exercised.
 ### 1. Install through the .deb without manually creating files — **PASS**
 
 ```
-$ sudo apt install ./dist/bandwidth-logger_1.6.0-1_all.deb
+$ sudo apt install ./dist/bandwidth-logger_1.7.0-1_all.deb
 Setting up speedtest-cli (2.1.3-2) ...
 Setting up bandwidth-logger (1.0.0-1) ...
 Processing triggers for hicolor-icon-theme (0.17-2) ...
@@ -246,7 +246,7 @@ Verified for real, by building a 1.0.1 package and upgrading:
 
 ```
 BEFORE UPGRADE -> records: 12 | interval: 240 | schema: 1
-$ sudo apt install ./dist/bandwidth-logger_1.0.1-1_all.deb
+$ sudo apt install ./dist/bandwidth-logger_1.7.0-1_all.deb
 Setting up bandwidth-logger (1.0.1-1) ...
 AFTER UPGRADE  -> records: 12 | interval: 240 | schema: 1
 first ISP: ISP 0 | last ISP: ISP 11

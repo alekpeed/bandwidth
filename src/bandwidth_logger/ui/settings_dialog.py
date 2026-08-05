@@ -25,6 +25,8 @@ from ..storage.database import (  # noqa: E402
     SETTING_ENGINE_NAME,
     SETTING_EXPORT_INCLUDE_IP,
     SETTING_RUN_AFTER_LOGIN,
+    SETTING_MONITOR_ENABLED,
+    SETTING_MONITOR_RETENTION_DAYS,
     SETTING_SERVER_ID,
     SETTING_TIMEOUT_SECONDS,
     Database,
@@ -104,6 +106,7 @@ class SettingsDialog(Gtk.Window):
 
         content.append(self._build_engine_section())
         content.append(self._build_server_section())
+        content.append(self._build_monitor_section())
         content.append(self._build_startup_section())
         content.append(self._build_privacy_section())
         content.append(self._build_storage_section())
@@ -279,6 +282,51 @@ class SettingsDialog(Gtk.Window):
         )
         return GLib.SOURCE_REMOVE
 
+    def _build_monitor_section(self) -> Gtk.Widget:
+        """Continuous throughput monitoring.
+
+        A different measurement from a speed test: this records how much
+        traffic the connection is actually carrying, by reading counters the
+        kernel keeps anyway. It sends nothing.
+        """
+        box = self._section("Throughput monitor")
+
+        self.monitor_switch = Gtk.Switch()
+        self.monitor_switch.set_active(self.database.get_bool(SETTING_MONITOR_ENABLED))
+        box.append(
+            _labelled_row(
+                "_Record throughput continuously",
+                self.monitor_switch,
+                "Records how much traffic is actually flowing, once a minute, in the "
+                "background. This measures usage, not capacity: it sends nothing and "
+                "uses no bandwidth.",
+            )
+        )
+
+        self.retention_spin = Gtk.SpinButton.new_with_range(1, 3650, 1)
+        self.retention_spin.set_value(self.database.get_int(SETTING_MONITOR_RETENTION_DAYS, 30))
+        box.append(
+            _labelled_row(
+                "_Keep throughput history for (days)",
+                self.retention_spin,
+                "Older throughput samples are removed. Speed-test records are never "
+                "affected by this and are never deleted automatically.",
+            )
+        )
+
+        note = Gtk.Label(
+            label=(
+                "Recording throughput also explains odd speed-test results: a test "
+                "that runs while the connection is already busy measures only the "
+                "capacity left over, and each result stores what else was in flight."
+            ),
+            xalign=0.0,
+            wrap=True,
+        )
+        note.add_css_class("dim-label")
+        box.append(note)
+        return box
+
     def _build_startup_section(self) -> Gtk.Widget:
         box = self._section("Background operation")
 
@@ -378,6 +426,9 @@ class SettingsDialog(Gtk.Window):
         if 0 <= server_index < len(self._server_ids):
             chosen = self._server_ids[server_index]
             self.database.set_setting(SETTING_SERVER_ID, chosen or "")
+
+        self.database.set_int(SETTING_MONITOR_RETENTION_DAYS, int(self.retention_spin.get_value()))
+        self.database.set_bool(SETTING_MONITOR_ENABLED, self.monitor_switch.get_active())
 
         self.database.set_bool(SETTING_RUN_AFTER_LOGIN, self.login_switch.get_active())
         self.database.set_bool(SETTING_EXPORT_INCLUDE_IP, self.include_ip_switch.get_active())

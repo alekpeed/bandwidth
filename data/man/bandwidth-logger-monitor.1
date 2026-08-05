@@ -1,0 +1,76 @@
+.TH BANDWIDTH\-LOGGER\-MONITOR 1 "2026-08-05" "bandwidth-logger 1.7.0" "User Commands"
+.SH NAME
+bandwidth\-logger\-monitor \- record how much traffic the connection is carrying
+.SH SYNOPSIS
+.B bandwidth\-logger\-monitor
+.RB [ \-\-once | \-\-summary | \-\-prune ]
+.RI [ options ]
+.SH DESCRIPTION
+.B bandwidth\-logger\-monitor
+records throughput \- how much traffic your connection is actually carrying \-
+by reading the byte counters the kernel maintains for each network interface.
+.PP
+This is a different measurement from a speed test. A speed test measures
+.B capacity
+by deliberately saturating the link. This measures
+.B usage
+without sending anything at all: it generates no traffic, consumes no
+bandwidth, and needs no special privileges.
+.PP
+With no options it runs until stopped, sampling every two seconds and writing
+one summary per minute containing the mean, the peak and the total bytes in
+each direction. The peak matters: a ten-second burst at full line rate is
+visible there even when the minute's mean is unremarkable.
+.PP
+This command is normally run by the
+.B bandwidth\-logger\-monitor.service
+user service, which is managed from the Throughput monitor section of the
+application's Settings window. Ordinary use does not require running it by
+hand.
+.SH OPTIONS
+.TP
+.B \-\-once
+Take a single reading, print it, and exit. Useful for checking the counters
+are readable.
+.TP
+.B \-\-summary
+Print the most recent recorded minutes and exit. Records nothing.
+.TP
+.B \-\-prune
+Delete samples older than the retention window and exit.
+.TP
+.BI \-\-sample\-seconds " SECONDS"
+Override the sampling interval. Clamped to between 1 and 60 seconds.
+.TP
+.B \-\-json
+Print machine-readable output.
+.TP
+.B \-\-verbose
+Log at debug level.
+.SH RETENTION
+Throughput samples are kept for 30 days by default, adjustable in Settings.
+.PP
+Speed-test records are
+.B never
+pruned. That permanence is what the application exists to provide, and
+nothing in this command touches them.
+.SH CONCURRENT USAGE
+While this monitor is running, every speed test additionally records how much
+traffic was already in flight when it began. A test performed over a busy
+connection measures only the capacity left over, so a scheduled test that
+happens to fire during a large download records a low figure that looks like
+a fault and is not. The stored context makes such a reading explicable rather
+than mysterious.
+.SH FILES
+.TP
+.I ~/.local/share/bandwidth\-logger/bandwidth\-logger.sqlite3
+Throughput summaries are stored in the same database as the test history, in
+the
+.B throughput_samples
+table.
+.TP
+.I ~/.config/systemd/user/bandwidth\-logger\-monitor.service
+The user service, written when the monitor is switched on.
+.SH SEE ALSO
+.BR bandwidth-logger (1),
+.BR bandwidth-logger-run (1)

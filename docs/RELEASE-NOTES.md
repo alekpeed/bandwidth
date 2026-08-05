@@ -1,5 +1,69 @@
 # Release notes
 
+## 1.7.0 — 5 August 2026
+
+Adds continuous throughput monitoring: a record of how much traffic the
+connection is actually carrying, alongside the speed tests that measure what
+it could carry.
+
+### Two different measurements
+
+A speed test measures **capacity**, by saturating the link. The monitor
+measures **usage**, by reading the byte counters the kernel maintains anyway.
+It generates no traffic, consumes no bandwidth and needs no privileges — two
+file reads every couple of seconds.
+
+Switch it on in **Settings → Throughput monitor**. A user service then records
+one row a minute with the mean, the peak and the total bytes each way.
+
+**Peak is stored separately from mean** because averaging would destroy the
+event worth seeing: ten seconds at full line rate inside an otherwise idle
+minute leaves an unremarkable average.
+
+The window also gains a live **Traffic now** readout, updated every two
+seconds and read straight from the counters, so it works whether or not the
+background service is running.
+
+### It explains odd speed-test results
+
+Every speed test now records how much traffic was already in flight when it
+began.
+
+This closes a real gap. A test over a busy connection measures the capacity
+that was *left over*, so a scheduled test that happened to fire during a large
+download recorded a low figure indistinguishable from a fault. For an
+application whose purpose is diagnosing intermittent slowdowns, a
+systematically misleading low reading is exactly the failure worth
+eliminating — and the fix is context, not a cleverer measurement.
+
+NULL when the monitor was not running, which is different from zero meaning
+the link was idle.
+
+### Retention
+
+Throughput samples are kept for 30 days by default, adjustable in Settings.
+
+They are the only records with a retention window. `test_runs` has none and
+never will: a test attempt is evidence about the connection, while a
+throughput sample is telemetry about a minute — plentiful, and interesting
+only in aggregate once it is old.
+
+### Also fixed
+
+CSV export wrote large float values in scientific notation: 12,400,000.0
+appeared as `1.24e+07`. Plain decimals now, which is what anyone opening a
+spreadsheet of bits per second expects and one less parsing risk for other
+tools. Found by a throughput test, but it affected the existing export too.
+
+### Note on scope
+
+The original specification excluded continuous bandwidth monitoring from
+version 1. Version 1 shipped and was accepted without it; this was added
+afterwards at the owner's request, as a deliberate extension rather than an
+oversight.
+
+---
+
 ## 1.6.0 — 4 August 2026
 
 ### The next run time, computed rather than asked for
@@ -397,7 +461,7 @@ open.
 
 ## Verification status
 
-232 automated tests pass on Ubuntu 24.04.4 with Python 3.12.3 and GTK 4.14.5.
+274 automated tests pass on Ubuntu 24.04.4 with Python 3.12.3 and GTK 4.14.5.
 The suite uses a fake engine throughout and never consumes bandwidth.
 
 Of the 17 manual acceptance tests, 16 are now confirmed — including menu

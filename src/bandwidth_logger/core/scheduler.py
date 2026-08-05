@@ -35,6 +35,7 @@ from pathlib import Path
 from ..storage.database import (
     SETTING_AUTO_ENABLED,
     SETTING_INTERVAL_MINUTES,
+    SETTING_MONITOR_ENABLED,
     SETTING_RUN_AFTER_LOGIN,
     Database,
 )
@@ -55,6 +56,7 @@ log = get_logger("scheduler")
 
 SERVICE_UNIT = "bandwidth-logger-test.service"
 TIMER_UNIT = "bandwidth-logger-test.timer"
+MONITOR_UNIT = "bandwidth-logger-monitor.service"
 
 MINIMUM_INTERVAL_MINUTES = 5
 MAXIMUM_INTERVAL_MINUTES = 7 * 24 * 60
@@ -281,8 +283,67 @@ WantedBy=timers.target
         )
         self._systemctl("--user", "daemon-reload")
 
+    @staticmethod
+    def monitor_command() -> list[str]:
+        script = shutil.which("bandwidth-logger-monitor")
+        if script:
+            return [script]
+        return [os.path.realpath(sys.executable), "-m", "bandwidth_logger.monitor_cli"]
+
+    def monitor_unit_text(self) -> str:
+        command = " ".join(self.monitor_command())
+        environment = "\n".join(self._environment_lines())
+        environment_block = f"{environment}\n" if environment else ""
+        return f"""[Unit]
+Description=Bandwidth Logger continuous throughput monitor
+
+[Service]
+Type=simple
+{environment_block}ExecStart={command}
+# Reading counters is nearly free, but a monitor is not worth disturbing the
+# rest of the session for.
+Nice=10
+IOSchedulingClass=idle
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
+"""
+
+    def apply_monitor(self, *, enabled: bool) -> bool:
+        """Start or stop the throughput monitor service.
+
+        Returns whether it is running afterwards. Kept separate from the test
+        scheduler on purpose: one is occasional and expensive, the other
+        continuous and nearly free, and neither should require the other.
+        """
+        self.database.set_bool(SETTING_MONITOR_ENABLED, enabled)
+
+        if not self.is_supported():
+            log.warning("systemd user instance unavailable; the throughput monitor cannot run")
+            return False
+
+        if not enabled:
+            self._systemctl("--user", "stop", MONITOR_UNIT, check=False)
+            self._systemctl("--user", "disable", MONITOR_UNIT, check=False)
+            log.info("Throughput monitor disabled")
+            return False
+
+        self.unit_dir.mkdir(parents=True, exist_ok=True)
+        (self.unit_dir / MONITOR_UNIT).write_text(self.monitor_unit_text(), encoding="utf-8")
+        self._systemctl("--user", "daemon-reload")
+        self._systemctl("--user", "enable", MONITOR_UNIT, check=False)
+        self._systemctl("--user", "restart", MONITOR_UNIT)
+        log.info("Throughput monitor enabled")
+        return self.monitor_active()
+
+    def monitor_active(self) -> bool:
+        completed = self._systemctl("--user", "is-active", MONITOR_UNIT, check=False)
+        return bool(completed and completed.stdout.strip() == "active")
+
     def remove_units(self) -> None:
-        for unit in (TIMER_UNIT, SERVICE_UNIT):
+        for unit in (TIMER_UNIT, SERVICE_UNIT, MONITOR_UNIT):
             path = self.unit_dir / unit
             if path.exists():
                 path.unlink()

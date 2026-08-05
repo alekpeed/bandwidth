@@ -24,5 +24,6 @@ override_dh_auto_install:
 	install -d debian/bandwidth-logger/usr/share/doc/bandwidth-logger/systemd
 	install -m 0644 data/systemd/bandwidth-logger-test.service \
 		data/systemd/bandwidth-logger-test.timer \
+		data/systemd/bandwidth-logger-monitor.service \
 		data/systemd/README.md \
 		debian/bandwidth-logger/usr/share/doc/bandwidth-logger/systemd/

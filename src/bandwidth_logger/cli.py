@@ -71,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="export the full history to a CSV file and print the row count",
     )
+    mode.add_argument(
+        "--export-throughput",
+        metavar="PATH",
+        help="export recorded throughput summaries to a CSV file",
+    )
     parser.add_argument(
         "--json",
         action="store_true",
@@ -103,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print_status(database, as_json=arguments.json)
         if arguments.export:
             return _export(database, arguments)
+        if arguments.export_throughput:
+            return _export_throughput(database, arguments)
         return _run_test(database, arguments)
     finally:
         database.close()
@@ -215,6 +222,19 @@ def _export(database: Database, arguments: argparse.Namespace) -> int:
         print(f"Could not write {destination}: {exc}", file=sys.stderr)
         return EXIT_APPLICATION_ERROR
     print(f"Exported {rows} record(s) to {destination}")
+    return EXIT_OK
+
+
+def _export_throughput(database: Database, arguments: argparse.Namespace) -> int:
+    from .storage.export_csv import export_throughput
+
+    destination = arguments.export_throughput
+    try:
+        rows = export_throughput(database, destination)
+    except OSError as exc:
+        print(f"Could not write {destination}: {exc}", file=sys.stderr)
+        return EXIT_APPLICATION_ERROR
+    print(f"Exported {rows} throughput row(s) to {destination}")
     return EXIT_OK
 
 

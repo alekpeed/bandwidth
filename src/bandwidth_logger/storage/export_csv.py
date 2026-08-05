@@ -19,7 +19,7 @@ from collections.abc import Iterable
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 
-from ..core.models import TestRun, bps_to_mbps
+from ..core.models import TestRun, ThroughputSummary, bps_to_mbps
 from ..system.logging_setup import get_logger
 from .database import Database
 
@@ -64,6 +64,32 @@ CSV_COLUMNS: tuple[str, ...] = (
     "engine_version",
     "application_version",
     "created_at_utc",
+    "concurrent_rx_bps",
+    "concurrent_tx_bps",
+)
+
+#: Column order for exported throughput summaries.
+THROUGHPUT_CSV_COLUMNS: tuple[str, ...] = (
+    "id",
+    "interface_name",
+    "connection_type",
+    "started_at_utc",
+    "started_at_local",
+    "ended_at_utc",
+    "duration_ms",
+    "sample_count",
+    "rx_bytes",
+    "tx_bytes",
+    "rx_bps_mean",
+    "rx_mbps_mean",
+    "rx_bps_peak",
+    "rx_mbps_peak",
+    "tx_bps_mean",
+    "tx_mbps_mean",
+    "tx_bps_peak",
+    "tx_mbps_peak",
+    "application_version",
+    "created_at_utc",
 )
 
 
@@ -85,13 +111,23 @@ def _cell(value: object) -> str:
 
     Missing data becomes a blank cell -- never ``None``, never ``0``, so a
     spreadsheet does not average a gap as if it were a zero measurement.
+
+    Floats are written in plain decimal, never scientific notation. ``%g``
+    renders 12,400,000.0 as ``1.24e+07``, which is not what anyone opening a
+    spreadsheet of bits per second wants to see and is a needless risk when
+    another tool parses the column. Trailing zeros are trimmed so a whole
+    number reads as one.
     """
     if value is None:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, float):
-        return f"{value:g}"
+        if value != value or value in (float("inf"), float("-inf")):
+            return ""
+        if value.is_integer() and abs(value) < 1e15:
+            return str(int(value))
+        return f"{value:.6f}".rstrip("0").rstrip(".")
     return str(value)
 
 
@@ -131,6 +167,8 @@ def row_for(run: TestRun, *, include_external_ip: bool) -> dict[str, str]:
         "engine_version": run.engine_version,
         "application_version": run.application_version,
         "created_at_utc": run.created_at_utc,
+        "concurrent_rx_bps": run.concurrent_rx_bps,
+        "concurrent_tx_bps": run.concurrent_tx_bps,
     }
     return {
         column: _cell(values.get(column))
@@ -192,3 +230,73 @@ def local_day_start_utc(day: date) -> str:
 
 def local_day_end_utc(day: date) -> str:
     return datetime.combine(day, time.max).astimezone().astimezone(timezone.utc).isoformat()
+
+
+# --------------------------------------------------------------------------
+# Throughput
+# --------------------------------------------------------------------------
+
+
+def throughput_row(summary: ThroughputSummary) -> dict[str, str]:
+    """One exported throughput row.
+
+    Raw bits per second and display megabits sit side by side, the same way
+    speed-test rows carry both, so a spreadsheet never has to convert.
+    """
+    values: dict[str, object] = {
+        "id": summary.id,
+        "interface_name": summary.interface_name,
+        "connection_type": summary.connection_type,
+        "started_at_utc": summary.started_at_utc,
+        "started_at_local": summary.started_at_local,
+        "ended_at_utc": summary.ended_at_utc,
+        "duration_ms": summary.duration_ms,
+        "sample_count": summary.sample_count,
+        "rx_bytes": summary.rx_bytes,
+        "tx_bytes": summary.tx_bytes,
+        "rx_bps_mean": summary.rx_bps_mean,
+        "rx_mbps_mean": bps_to_mbps(summary.rx_bps_mean),
+        "rx_bps_peak": summary.rx_bps_peak,
+        "rx_mbps_peak": bps_to_mbps(summary.rx_bps_peak),
+        "tx_bps_mean": summary.tx_bps_mean,
+        "tx_mbps_mean": bps_to_mbps(summary.tx_bps_mean),
+        "tx_bps_peak": summary.tx_bps_peak,
+        "tx_mbps_peak": bps_to_mbps(summary.tx_bps_peak),
+        "application_version": summary.application_version,
+        "created_at_utc": summary.created_at_utc,
+    }
+    return {column: _cell(values.get(column)) for column in THROUGHPUT_CSV_COLUMNS}
+
+
+def default_throughput_filename(moment: datetime | None = None) -> str:
+    """``bandwidth-throughput-YYYY-MM-DD_HH-MM.csv`` in local time."""
+    stamp = (moment or datetime.now()).astimezone()
+    return f"bandwidth-throughput-{stamp:%Y-%m-%d_%H-%M}.csv"
+
+
+def export_throughput(
+    database: Database,
+    destination: Path | str,
+    *,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> int:
+    """Export throughput summaries to CSV. Never alters the database."""
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    start_utc = local_day_start_utc(start_date) if start_date else None
+    end_utc = local_day_end_utc(end_date) if end_date else None
+
+    written = 0
+    with destination.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=list(THROUGHPUT_CSV_COLUMNS), quoting=csv.QUOTE_MINIMAL
+        )
+        writer.writeheader()
+        for summary in database.iter_throughput(start_utc=start_utc, end_utc=end_utc):
+            writer.writerow(throughput_row(summary))
+            written += 1
+
+    log.info("Exported %d throughput row(s) to %s", written, destination)
+    return written
