@@ -1,0 +1,15 @@
+[Unit]
+Description=Bandwidth Logger continuous throughput monitor
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bandwidth-logger-monitor
+# Reading counters is nearly free, but a monitor is not worth disturbing the
+# rest of the session for.
+Nice=10
+IOSchedulingClass=idle
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

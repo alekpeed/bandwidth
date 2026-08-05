@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bandwidth-logger"
-version = "1.0.0"
+version = "1.7.0"
 description = "Native Ubuntu desktop application that runs scheduled internet speed tests and keeps a complete local history."
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
@@ -31,6 +31,7 @@ dev = ["pytest>=7.0"]
 [project.scripts]
 bandwidth-logger = "bandwidth_logger.application:main"
 bandwidth-logger-run = "bandwidth_logger.cli:main"
+bandwidth-logger-monitor = "bandwidth_logger.monitor_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

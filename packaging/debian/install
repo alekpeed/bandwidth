@@ -1,0 +1,3 @@
+data/desktop/org.bandwidthlogger.BandwidthLogger.desktop  usr/share/applications
+data/metainfo/org.bandwidthlogger.BandwidthLogger.metainfo.xml  usr/share/metainfo
+data/icons/hicolor/scalable/apps/bandwidth-logger.svg  usr/share/icons/hicolor/scalable/apps

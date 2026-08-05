@@ -1,0 +1,42 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: bandwidth-logger
+Source: https://github.com/alekpeed/bandwidth
+
+Files: *
+Copyright: 2026 Bandwidth Logger contributors
+License: GPL-3.0-or-later
+
+License: GPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify it
+ under the terms of the GNU General Public License as published by the Free
+ Software Foundation, either version 3 of the License, or (at your option)
+ any later version.
+ .
+ This program is distributed in the hope that it will be useful, but WITHOUT
+ ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ more details.
+ .
+ You should have received a copy of the GNU General Public License along with
+ this program. If not, see <https://www.gnu.org/licenses/>.
+ .
+ On Debian systems the complete text of the GNU General Public License
+ version 3 can be found in /usr/share/common-licenses/GPL-3.
+
+Comment:
+ This package contains no third-party speed-test engine.
+ .
+ The official Ookla Speedtest CLI is proprietary software licensed by Ookla
+ under its own End User Licence Agreement, which does not permit
+ redistribution by third parties. It is therefore neither bundled in this
+ package nor declared as a dependency. When it is already installed the
+ application uses it; when it is not, the application explains that it is
+ Ookla's software and offers to guide the user through installing it from
+ Ookla's own software source.
+ .
+ The fallback engine, speedtest-cli, is Apache-2.0 licensed and is packaged
+ separately in Ubuntu. It is declared as an ordinary dependency and is not
+ included in this package either.
+ .
+ See docs/DEPENDENCIES.md for the full third-party dependency and licence
+ list.

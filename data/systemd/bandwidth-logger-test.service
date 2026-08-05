@@ -1,0 +1,9 @@
+[Unit]
+Description=Bandwidth Logger scheduled speed test
+Documentation=man:bandwidth-logger(1)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bandwidth-logger-run --scheduled
+# A failed test is an ordinary recorded outcome, not a unit failure: the
+# runner stores the failure and exits 0 so one bad test never stops the timer.

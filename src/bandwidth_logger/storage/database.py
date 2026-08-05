@@ -16,7 +16,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..core.models import TEST_RUN_FIELDS, TestRun
+from ..core.models import (
+    TEST_RUN_FIELDS,
+    THROUGHPUT_FIELDS,
+    TestRun,
+    ThroughputSummary,
+)
 from ..system import paths
 from ..system.logging_setup import get_logger
 from . import migrations
@@ -37,7 +42,11 @@ SETTING_EXPORT_INCLUDE_IP = "export_include_external_ip"
 SETTING_SORT_NEWEST_FIRST = "table_sort_newest_first"
 SETTING_TIMEOUT_SECONDS = "engine_timeout_seconds"
 SETTING_ENGINE_NAME = "preferred_engine"
+SETTING_SERVER_ID = "preferred_server_id"
 SETTING_CLOSE_NOTICE_SHOWN = "close_behaviour_notice_shown"
+SETTING_MONITOR_ENABLED = "throughput_monitor_enabled"
+SETTING_MONITOR_INTERVAL_SECONDS = "throughput_sample_seconds"
+SETTING_MONITOR_RETENTION_DAYS = "throughput_retention_days"
 
 DEFAULT_SETTINGS: dict[str, str] = {
     SETTING_AUTO_ENABLED: "false",
@@ -47,7 +56,12 @@ DEFAULT_SETTINGS: dict[str, str] = {
     SETTING_SORT_NEWEST_FIRST: "true",
     SETTING_TIMEOUT_SECONDS: "180",
     SETTING_ENGINE_NAME: "auto",
+    # Empty means "let the engine choose". See docs/ARCHITECTURE.md.
+    SETTING_SERVER_ID: "",
     SETTING_CLOSE_NOTICE_SHOWN: "false",
+    SETTING_MONITOR_ENABLED: "false",
+    SETTING_MONITOR_INTERVAL_SECONDS: "2",
+    SETTING_MONITOR_RETENTION_DAYS: "30",
 }
 
 
@@ -297,6 +311,137 @@ class Database:
             cursor = connection.execute(query, parameters)
             removed = cursor.rowcount
         log.info("Deleted %d run(s)", removed)
+        return int(removed)
+
+    def delete_runs_by_id(self, run_ids: "list[int]") -> int:
+        """Delete exactly the given runs and return how many were removed.
+
+        Only ever called from an explicit confirmation in the interface, the
+        same as range deletion. Ids are bound as parameters, never
+        interpolated, and are chunked so a very large selection cannot exceed
+        SQLite's variable limit.
+        """
+        unique = sorted({int(run_id) for run_id in run_ids})
+        if not unique:
+            return 0
+
+        removed = 0
+        chunk_size = 500
+        with self.transaction() as connection:
+            for start in range(0, len(unique), chunk_size):
+                chunk = unique[start : start + chunk_size]
+                placeholders = ", ".join("?" for _ in chunk)
+                cursor = connection.execute(
+                    f"DELETE FROM test_runs WHERE id IN ({placeholders})", chunk
+                )
+                removed += cursor.rowcount
+        log.info("Deleted %d selected run(s)", removed)
+        return int(removed)
+
+    def runs_by_id(self, run_ids: "list[int]") -> "list[TestRun]":
+        """Fetch specific runs, for showing what a deletion will remove."""
+        unique = sorted({int(run_id) for run_id in run_ids})
+        if not unique:
+            return []
+        placeholders = ", ".join("?" for _ in unique)
+        rows = self.connect().execute(
+            f"SELECT * FROM test_runs WHERE id IN ({placeholders}) ORDER BY started_at_utc",
+            unique,
+        ).fetchall()
+        return [TestRun.from_row(row) for row in rows]
+
+    # -- throughput --------------------------------------------------------
+
+    def insert_throughput_summary(self, summary: ThroughputSummary) -> int:
+        columns = ", ".join(THROUGHPUT_FIELDS)
+        placeholders = ", ".join(f":{field}" for field in THROUGHPUT_FIELDS)
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                f"INSERT INTO throughput_samples ({columns}) VALUES ({placeholders})",
+                summary.to_row(),
+            )
+            summary.id = int(cursor.lastrowid)
+        return summary.id
+
+    def list_throughput(
+        self,
+        *,
+        newest_first: bool = True,
+        limit: int | None = None,
+        start_utc: str | None = None,
+        end_utc: str | None = None,
+    ) -> "list[ThroughputSummary]":
+        query = "SELECT * FROM throughput_samples"
+        clauses, parameters = self._range_clauses(start_utc, end_utc)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY started_at_utc " + ("DESC" if newest_first else "ASC")
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters.append(limit)
+        rows = self.connect().execute(query, parameters).fetchall()
+        return [ThroughputSummary.from_row(row) for row in rows]
+
+    def iter_throughput(
+        self, *, start_utc: str | None = None, end_utc: str | None = None
+    ) -> Iterator[ThroughputSummary]:
+        """Stream summaries for export without holding them all in memory."""
+        query = "SELECT * FROM throughput_samples"
+        clauses, parameters = self._range_clauses(start_utc, end_utc)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY started_at_utc ASC"
+        for row in self.connect().execute(query, parameters):
+            yield ThroughputSummary.from_row(row)
+
+    def count_throughput(self, *, start_utc: str | None = None, end_utc: str | None = None) -> int:
+        query = "SELECT COUNT(*) FROM throughput_samples"
+        clauses, parameters = self._range_clauses(start_utc, end_utc)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        return int(self.connect().execute(query, parameters).fetchone()[0])
+
+    def latest_throughput(self) -> "ThroughputSummary | None":
+        row = self.connect().execute(
+            "SELECT * FROM throughput_samples ORDER BY started_at_utc DESC, id DESC LIMIT 1"
+        ).fetchone()
+        return ThroughputSummary.from_row(row) if row is not None else None
+
+    def throughput_around(self, moment_utc: str, *, window_minutes: int = 2) -> "ThroughputSummary | None":
+        """The summary covering, or immediately preceding, a given instant.
+
+        Used to record what else was in flight when a speed test started.
+        """
+        from datetime import timedelta
+
+        from ..core.models import parse_iso, to_utc_iso
+
+        moment = parse_iso(moment_utc)
+        if moment is None:
+            return None
+        earliest = to_utc_iso(moment - timedelta(minutes=window_minutes))
+        row = self.connect().execute(
+            """
+            SELECT * FROM throughput_samples
+            WHERE started_at_utc >= ? AND started_at_utc <= ?
+            ORDER BY started_at_utc DESC LIMIT 1
+            """,
+            (earliest, moment_utc),
+        ).fetchone()
+        return ThroughputSummary.from_row(row) if row is not None else None
+
+    def delete_throughput_before(self, cutoff_utc: str) -> int:
+        """Drop summaries older than *cutoff_utc*.
+
+        Only throughput samples are ever pruned. Speed-test records have no
+        retention limit and are never removed automatically -- that guarantee
+        is what the application exists to provide.
+        """
+        with self.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM throughput_samples WHERE started_at_utc < ?", (cutoff_utc,)
+            )
+            removed = cursor.rowcount
         return int(removed)
 
     @staticmethod

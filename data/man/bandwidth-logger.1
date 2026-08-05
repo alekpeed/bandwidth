@@ -1,0 +1,70 @@
+.TH BANDWIDTH\-LOGGER 1 "2026-08-04" "bandwidth-logger 1.0.0" "User Commands"
+.SH NAME
+bandwidth\-logger \- run internet speed tests on a schedule and keep a complete history
+.SH SYNOPSIS
+.B bandwidth\-logger
+.RI [ --version ]
+.SH DESCRIPTION
+.B bandwidth\-logger
+opens the Bandwidth Logger window. It measures your internet connection at an
+interval you choose and keeps a permanent, timestamped record of every test on
+this computer.
+.PP
+The application is normally started from the application menu rather than from
+a terminal, and no part of ordinary use requires a terminal or administrator
+privileges.
+.PP
+Every attempted test produces a record, including tests that failed, timed
+out, or were skipped because another test was still running. A gap in the
+history therefore always has a stated reason.
+.SH SCHEDULING
+Automatic testing is performed by a systemd
+.B user
+timer, so tests continue after the window is closed and resume after you log
+back in. The timer runs
+.BR bandwidth-logger-run (1)
+with the
+.B \-\-scheduled
+option.
+.PP
+Missed runs are never replayed. A computer that was switched off or suspended
+resumes with a single test on the normal schedule, and the interruption is
+recorded.
+.SH FILES
+.TP
+.I ~/.local/share/bandwidth\-logger/bandwidth\-logger.sqlite3
+The authoritative record of every test, and the application's settings.
+.TP
+.I ~/.local/state/bandwidth\-logger/application.log
+Rotating diagnostic log. Not a record of results.
+.TP
+.I ~/.config/systemd/user/bandwidth\-logger\-test.timer
+.TQ
+.I ~/.config/systemd/user/bandwidth\-logger\-test.service
+The user timer and service written when automatic testing is switched on.
+.SH ENVIRONMENT
+.TP
+.B BANDWIDTH_LOGGER_HOME
+Redirects every path above beneath the named directory. Intended for testing.
+.TP
+.B BANDWIDTH_LOGGER_DEBUG
+When set, the diagnostic log records debug-level messages.
+.SH PRIVACY
+Nothing is transmitted anywhere except the speed test itself, which
+necessarily contacts a test server. There is no account, no cloud service, no
+analytics and no telemetry. The external IP address is stored with each record
+but is excluded from exported CSV files unless you ask for it.
+.SH UNINSTALLING
+Removing the package does not delete your records. To delete them, remove
+.I ~/.local/share/bandwidth\-logger
+and
+.IR ~/.local/state/bandwidth\-logger .
+To stop background testing first, switch Automatic testing off in the window,
+or run:
+.PP
+.RS
+systemctl \-\-user disable \-\-now bandwidth\-logger\-test.timer
+.RE
+.SH SEE ALSO
+.BR bandwidth-logger-run (1),
+.BR systemd.timer (5)

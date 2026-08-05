@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.bandwidthlogger.BandwidthLogger</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Bandwidth Logger</name>
+  <summary>Run internet speed tests on a schedule and keep a complete record</summary>
+
+  <description>
+    <p>
+      Bandwidth Logger measures your internet connection at an interval you
+      choose and keeps a permanent, timestamped record of every test on this
+      computer. It is built for diagnosing slowdowns that come and go: instead
+      of one reading taken when you happened to notice a problem, you get a
+      history you can look through and export.
+    </p>
+    <p>Every attempted test is recorded, including ones that failed:</p>
+    <ul>
+      <li>Run a test immediately, or on a schedule from 5 minutes to 24 hours</li>
+      <li>Keep testing in the background after the window is closed</li>
+      <li>See download, upload, latency, jitter, packet loss, server and provider</li>
+      <li>Inspect the complete stored record for any test, including failures</li>
+      <li>Export everything, or a date range, to a CSV file</li>
+    </ul>
+    <p>
+      Nothing leaves your computer except the speed test itself. There is no
+      account, no cloud service and no analytics, and the application never
+      needs administrator rights to run.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">org.bandwidthlogger.BandwidthLogger.desktop</launchable>
+
+  <url type="homepage">https://github.com/alekpeed/bandwidth</url>
+  <url type="bugtracker">https://github.com/alekpeed/bandwidth/issues</url>
+
+  <developer id="org.bandwidthlogger">
+    <name>Bandwidth Logger contributors</name>
+  </developer>
+
+  <categories>
+    <category>Network</category>
+    <category>Monitor</category>
+  </categories>
+
+  <keywords>
+    <keyword>speedtest</keyword>
+    <keyword>bandwidth</keyword>
+    <keyword>broadband</keyword>
+    <keyword>latency</keyword>
+  </keywords>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.3.0" date="2026-08-04">
+      <description>
+        <p>
+          Individual records can now be selected and deleted, and applying an
+          interval while automatic testing is off explains that nothing was
+          scheduled.
+        </p>
+      </description>
+    </release>
+    <release version="1.2.0" date="2026-08-04">
+      <description>
+        <p>
+          Added a test server setting, so results stay comparable over time
+          instead of shifting when the engine picks a different server.
+        </p>
+      </description>
+    </release>
+    <release version="1.1.0" date="2026-08-04">
+      <description>
+        <p>
+          Removed the fallback speed-test engine, which under-reported speed on
+          fast connections, and corrected the instructions for installing the
+          Ookla engine on Ubuntu 24.04.
+        </p>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-08-04">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

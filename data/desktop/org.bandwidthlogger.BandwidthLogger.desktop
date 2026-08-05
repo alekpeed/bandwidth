@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Bandwidth Logger
+GenericName=Internet Speed Logger
+Comment=Run internet speed tests on a schedule and keep a complete record
+Exec=bandwidth-logger
+Icon=bandwidth-logger
+Terminal=false
+# Exactly one main category, or the entry appears twice in the menu.
+Categories=Network;Monitor;
+Keywords=speed;speedtest;bandwidth;internet;network;broadband;latency;ping;log;
+StartupNotify=true
+StartupWMClass=bandwidth-logger

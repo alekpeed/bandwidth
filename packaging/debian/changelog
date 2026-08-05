@@ -1,0 +1,138 @@
+bandwidth-logger (1.7.0-1) noble; urgency=medium
+
+  * Add a continuous throughput monitor. A new user service reads the kernel's
+    interface byte counters every two seconds and stores one summary a minute
+    with mean, peak and total bytes in each direction. This measures usage,
+    not capacity: it generates no traffic and needs no privileges.
+  * Record concurrent throughput on every speed test. A test run over a busy
+    connection measures the capacity that was left over, so a scheduled test
+    that fired during a large download recorded a low figure that looked like
+    a fault. The result now carries what else was in flight.
+  * Show live throughput in the window, updated every two seconds, read
+    directly from the counters so it is current even with the monitor off.
+  * Export throughput summaries to CSV, with raw and display columns.
+  * Throughput samples are kept for 30 days by default, configurable. Speed
+    test records remain permanent and are never pruned.
+  * Write plain decimals in CSV rather than scientific notation. Large float
+    values such as bits per second were rendered as "1.24e+07".
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Wed, 05 Aug 2026 09:00:00 +0000
+
+bandwidth-logger (1.6.0-1) noble; urgency=medium
+
+  * Work the next run time out from the recorded history when systemd will
+    not report it. OnUnitActiveSec fires one interval after the service last
+    ran, and the application already records exactly when that was, so the
+    answer can be derived without asking systemd at all. It is labelled
+    "about" so a calculation is never mistaken for systemd's own figure.
+  * Do not offer a stale estimate: if the expected time is well past, the
+    schedule was interrupted and the history is the wrong basis for a
+    prediction.
+  * Read the next run from "list-timers --timestamp=unix". systemd 255
+    rejects "--json=short" for list-timers outright, so the plain listing is
+    requested with unix timestamps, which is immune to locale and to the
+    pretty-printing that made the show properties unusable.
+  * Make the cross-process lock test deterministic by taking the lock
+    directly rather than racing a running test.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 18:00:00 +0000
+
+bandwidth-logger (1.5.0-1) noble; urgency=medium
+
+  * Read the next run time from "systemctl list-timers --json" rather than
+    from "systemctl show". On systemd 255, with the timer active and counting
+    down correctly, show reported NextElapseUSecMonotonic=infinity, omitted
+    NextElapseUSecRealtime, and pretty-printed the timestamps as dates rather
+    than raw microseconds -- while list-timers gave the correct next run to
+    the second. The show properties remain as a fallback for older versions.
+  * Never describe an active timer as "Not scheduled". When the timer is
+    running but its next firing cannot be read, the window now says
+    "Scheduled (next run time unavailable)", which is true, instead of
+    denying that any test is queued.
+  * Tolerate non-numeric systemd time values such as "infinity" instead of
+    failing to parse them.
+  * Make the cross-process lock test tolerate a slow interpreter start; it
+    could fail under load for reasons unrelated to locking.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 17:00:00 +0000
+
+bandwidth-logger (1.4.0-1) noble; urgency=medium
+
+  * Fix "Next test: Not scheduled" being shown while the timer was running
+    normally. The timer is defined with OnActiveSec/OnUnitActiveSec, which
+    are monotonic, so systemd reports the next firing in
+    NextElapseUSecMonotonic and leaves NextElapseUSecRealtime at zero. Only
+    the realtime property was read, so a healthy, actively counting timer was
+    reported as not scheduled. Both are now read.
+  * Reword the automatic testing control. The state word sat to the right of
+    the switch, where it reads as a label for the control beside it rather
+    than as the switch's own state, so the switch position could be read
+    backwards. It now reads "Automatic testing is currently Off" with the
+    switch after it.
+  * Re-sync the switch from the stored setting on every refresh, so the
+    toggle and the schedule cannot silently disagree.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 16:00:00 +0000
+
+bandwidth-logger (1.3.0-1) noble; urgency=medium
+
+  * Add Delete selected. Rows in the table can now be multi-selected and
+    deleted individually, with the same confirmation stating the count and
+    the dates covered. Deleting a range could not remove one bad reading
+    without taking its neighbours.
+  * Say something when Apply is pressed with automatic testing switched off.
+    It saved the interval and scheduled nothing, in silence, which was
+    indistinguishable from having started the schedule.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 15:00:00 +0000
+
+bandwidth-logger (1.2.0-1) noble; urgency=medium
+
+  * Add a Test server setting. The engine chooses a server by lowest latency,
+    which is not the same as fastest: measured on one gigabit line, the
+    lowest-latency server returned 696 Mbps while another 0.5 ms further away
+    returned 926. Left automatic the engine may also choose differently
+    between runs, so a change in a recorded speed could mean only that a
+    different server answered -- which defeats the purpose of keeping a
+    history.
+  * Settings can now fetch the list of nearby servers and pin one. Fetching
+    contacts Ookla, so it happens only when asked and never during a
+    scheduled test.
+  * A pinned server id is validated as numeric before use.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 14:00:00 +0000
+
+bandwidth-logger (1.1.0-1) noble; urgency=medium
+
+  * Remove the speedtest-cli fallback engine. It under-reported throughput
+    badly on fast connections -- roughly half the real figure on a gigabit
+    line -- because it cannot open enough parallel connections to fill one.
+    For an application whose purpose is diagnosing a slow connection, a
+    number that is quietly wrong by half is worse than no number at all.
+  * Conflict with speedtest-cli rather than depending on it. Ubuntu's package
+    owns /usr/bin/speedtest, the same path Ookla's package installs to, so
+    having it present made the Ookla engine impossible to install.
+  * Correct the Ookla install commands. Ookla publishes no repository for
+    Ubuntu 24.04, so the upstream script must be told to use the jammy
+    repository, which runs correctly on 24.04. The commands now also remove
+    the conflicting package first. Verified working end to end.
+  * Annotate stored results measured by the removed engine, so an old low
+    reading cannot be misread as a real slowdown. No record is rewritten or
+    deleted.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 13:00:00 +0000
+
+bandwidth-logger (1.0.0-1) noble; urgency=medium
+
+  * First release.
+  * Manual and scheduled internet speed tests with a complete local history.
+  * Every attempted test is recorded, including failures, timeouts and
+    attempts skipped because another test was still running.
+  * Background scheduling through a systemd user timer, so testing continues
+    with the window closed and resumes after login.
+  * Full and date-range CSV export, with the external IP address excluded by
+    default.
+  * Ookla Speedtest CLI is used when installed; the open-source speedtest-cli
+    is a package dependency so the application works on first launch.
+
+ -- Bandwidth Logger contributors <bandwidth-logger@example.invalid>  Tue, 04 Aug 2026 09:00:00 +0000

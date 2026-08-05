@@ -93,9 +93,58 @@ def _migration_001(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_002(connection: sqlite3.Connection) -> None:
+    """Throughput monitoring.
+
+    Adds a table of per-minute throughput summaries, and two columns on
+    ``test_runs`` recording how busy the link already was when a speed test
+    started. Both are additive: no table is dropped, no column removed, no
+    row deleted.
+
+    The concurrent columns matter more than they look. A speed test run while
+    the connection is already carrying traffic measures the *remaining*
+    capacity, so a scheduled test that happens to fire during a large download
+    records a low figure that looks like a fault and is not. Storing what else
+    was in flight makes such a reading explicable after the fact instead of
+    mysterious.
+    """
+    _run_statements(
+        connection,
+        """
+        CREATE TABLE IF NOT EXISTS throughput_samples (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            interface_name      TEXT NOT NULL,
+            started_at_utc      TEXT NOT NULL,
+            started_at_local    TEXT NOT NULL,
+            ended_at_utc        TEXT NOT NULL,
+            duration_ms         INTEGER NOT NULL,
+            sample_count        INTEGER NOT NULL,
+            rx_bytes            INTEGER NOT NULL,
+            tx_bytes            INTEGER NOT NULL,
+            rx_bps_mean         REAL NOT NULL,
+            tx_bps_mean         REAL NOT NULL,
+            rx_bps_peak         REAL NOT NULL,
+            tx_bps_peak         REAL NOT NULL,
+            connection_type     TEXT NULL,
+            application_version TEXT NOT NULL,
+            created_at_utc      TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_throughput_started_at_utc
+            ON throughput_samples (started_at_utc);
+        CREATE INDEX IF NOT EXISTS idx_throughput_interface
+            ON throughput_samples (interface_name);
+
+        ALTER TABLE test_runs ADD COLUMN concurrent_rx_bps REAL NULL;
+        ALTER TABLE test_runs ADD COLUMN concurrent_tx_bps REAL NULL;
+        """
+    )
+
+
 #: Ordered list of every migration. Append only.
 MIGRATIONS: list[Migration] = [
     (1, "initial schema", _migration_001),
+    (2, "throughput monitoring", _migration_002),
 ]
 
 LATEST_VERSION = max(version for version, _, _ in MIGRATIONS)
